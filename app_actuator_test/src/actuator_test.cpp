@@ -65,6 +65,8 @@ int main(int argc, char **argv)
   {
     grp.controls.push_back(0.0);
   }
+  std::this_thread::sleep_for(milliseconds(2000));
+
   Offboard::ActuatorControl act_cmd{};
   act_cmd.groups.push_back(grp);
   act_cmd.groups.push_back(grp);
@@ -72,8 +74,11 @@ int main(int argc, char **argv)
   // start offboard
   Offboard::Result offboard_result = offboard.start();
 
+  std::this_thread::sleep_for(milliseconds(500));
+  // act_cmd.groups.at(0).controls.at(3) = 0.25;
+  // std::this_thread::sleep_for(milliseconds(2500));
   /* GO THROUGHT ALL THROTTLES FROM 0 TO 1 */
-  for (float throttle = 0.15; throttle <= 1.05; throttle += 0.05)
+  for (float throttle = 0.05; throttle <= 1.05; throttle += 0.05)
   {
     // send thrust command
     std::cout << "now setting throttle = " << throttle << std::endl;
@@ -81,7 +86,7 @@ int main(int argc, char **argv)
     offboard.set_actuator_control(act_cmd);
 
     // wait for thrust to settle
-    std::this_thread::sleep_for(milliseconds(2500));
+    std::this_thread::sleep_for(milliseconds(10000));
   }
 
   /* DISARM PLANE */
