@@ -46,6 +46,7 @@ std::function<void(const mavlink_message_t &)> airSpeedCallback =
   airspeed = mavlink_msg_vfr_hud_get_airspeed(&msg);
 };
 
+// Commmand to start: /build/app_flight_logger/flight_logger serial:///dev/ttyUSB0:921600
 int main(int argc, char **argv)
 {
   /* INITIALIZE LOGGING */
