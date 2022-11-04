@@ -9,4 +9,5 @@ find_package(MAVSDK REQUIRED)
 
 
 add_subdirectory(app_actuator_test)
+add_subdirectory(app_flight_logger)
 #add_subdirectory(app_thrust_stand)
