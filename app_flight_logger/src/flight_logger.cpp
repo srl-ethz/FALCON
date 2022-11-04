@@ -59,10 +59,6 @@ int main(int argc, char **argv)
   myLog.open("app_flight_logger/log/Flight_" + Date + ".csv");
   std::cout << "Started logging to log/"
             << "Flight_" << Date << ".csv" << std::endl;
-
-  myLog << "hey"
-        << "\n";
-  myLog.close();
   std::cout << "closed log" << std::endl;
   /* INITIALIZE MAVSDK */
   if (argc != 2)
