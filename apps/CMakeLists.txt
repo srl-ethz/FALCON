@@ -1,0 +1,3 @@
+add_subdirectory(app_actuator_test)
+add_subdirectory(app_flight_logger)
+add_subdirectory(app_mpc_test)
