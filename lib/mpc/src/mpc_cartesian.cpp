@@ -9,11 +9,11 @@ using std::this_thread::sleep_for;
 
 MX Model::drag(MX aoA_rad, MX airspeed_squared)
 {
-  return if_else(aoA_rad < 0, 100000, 0.5 * Model::A_tot * Model::rho * airspeed_squared * (1.97950651 * pow(aoA_rad, 2) + 0.01655889));
+  return 0.5 * Model::A_tot * Model::rho * airspeed_squared * (1.97950651 * pow(aoA_rad, 2) + 0.01655889);
 }
 MX Model::lift(MX aoA_rad, MX airspeed_squared)
 {
-  return if_else(aoA_rad < 0, 0, 0.5 * Model::A_tot * Model::rho * airspeed_squared * (0.44482359 * aoA_rad + 0.00245455));
+  return 0.5 * Model::A_tot * Model::rho * airspeed_squared * (0.44482359 * aoA_rad + 0.00245455);
 }
 MX Model::thrust(MX u_throttle)
 {
@@ -36,16 +36,12 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
   const double u0_MIN = 0;                // [ - ] min throttle cmd
   const double u1_MAX = 30 * M_PI / 180;  // [ rad ] max pitch
   const double u1_MIN = -30 * M_PI / 180; // [ rad ] min pitch
-  const double u2_MIN = -60 * M_1_PI / 180;
-  const double u2_MAX = 60 * M_1_PI / 180;
 
   const double aoA_MAX = 20 * M_PI / 180; // [ rad ] max angle of attack
   const double aoA_MIN = 0;               // [ rad ] min angle of attack
 
-  const double V_ABS_MAX = 15;               // [ m/s ] max speed
-  const double V_ABS_MIN = 6;                // [ m/s ] min speed
-  const double V_ARG_MAX = 30 * M_PI / 180;  // [ m/s ] max speed
-  const double V_ARG_MIN = -30 * M_PI / 180; // [ m/s ] min speed
+  const double V_MAX = 15; // [ m/s ] max speed
+  const double V_MIN = 6;  // [ m/s ] min speed
 
   // timstep (for now constant)
   double dt = 0.08;
@@ -60,18 +56,16 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
   ///////////////////////////////////////////////////////// initialize optimizer
   Opti opti = Opti();
   MX pos = opti.variable(2, horizon + 1);           // x and z
-  MX vel_pol = opti.variable(2, horizon + 1);       // polar: v_abs and v_arg
-  MX vel_cart = opti.variable(2, horizon + 1);      // cartesian: v_x and v_z
-  MX u = opti.variable(2, horizon);                 // thurst, alpha and grip angle
+  MX vel = opti.variable(2, horizon + 1);           // x_dot and z_dot
+  MX u = opti.variable(2, horizon);                 // thurst and alpha
   MX angleOfAttack = opti.variable(1, horizon + 1); // angle of attack
-
   //  cost function
   MX J = 0;
   double weight = 100 / horizon;
   for (int i = 0; i < horizon; ++i)
   {
     weight = (i + 1) * 100 / horizon;
-    J += weight * sumsqr(pos(Slice(), i + 1) - pos_ref) + weight / 5 * sumsqr(vel_pol(Slice(), i + 1) - vel_ref);
+    J += weight * sumsqr(pos(Slice(), i + 1) - pos_ref) + weight / 5 * sumsqr(vel(Slice(), i + 1) - vel_ref);
   }
   opti.minimize(J);
 
@@ -81,14 +75,12 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
     // inputs
     opti.subject_to(opti.bounded(u0_MIN, u(0, i), u0_MAX));
     opti.subject_to(opti.bounded(u1_MIN, u(1, i), u1_MAX));
-    // opti.subject_to(opti.bounded(u2_MIN, u(1, i), u2_MAX));
 
     // angle of attack
-    opti.subject_to(opti.bounded(aoA_MIN, angleOfAttack(0, i + 1), aoA_MAX));
+    opti.subject_to(opti.bounded(aoA_MIN, angleOfAttack(0, i), aoA_MAX));
 
     // velocities
-    opti.subject_to(opti.bounded(V_ABS_MIN, vel_pol(0, i + 1), V_ABS_MAX));
-    opti.subject_to(opti.bounded(V_ARG_MIN, vel_pol(1, i + 1), V_ARG_MAX));
+    opti.subject_to(opti.bounded(V_MIN, vel(0, i + 1), V_MAX));
   }
 
   // system dynamics (highly nonlinear)
@@ -105,7 +97,7 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
     z_loc(1) = cos(u(1, i - 1));
 
     // calculate absolute value of speed and angel of Attack
-    MX speed_squared = vel_pol(0, i - 1) * vel_pol(0, i - 1);
+    MX speed_squared = vel(0, i - 1) * vel(0, i - 1) + vel(1, i - 1) * vel(1, i - 1);
 
     // PROBLEM : Calculate angle arctan( vz / vx )
 
@@ -114,7 +106,7 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
     // MX angle_vel = 0;
     // if_else(fabs(vel(1, i - 1)) < epsilon, angle_vel = 0.01, angle_vel = atan2(vel(1, i - 1), vel(0, i - 1)));
 
-    angleOfAttack(0, i - 1) = u(1, i - 1) - vel_pol(1, i - 1);
+    angleOfAttack(0, i - 1) = u(1, i - 1) - atan2(vel(1, i - 1), vel(0, i - 1));
 
     //  calculate lift, drag and thrust
     //  MX lift = Model::lift(aoA, speed_squared);
@@ -127,26 +119,22 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
     // calculate acceleration on plane
     // MX a = (thrust * x_loc + lift * z_loc - drag * x_loc) / Model::mass;
     MX a = (thrust * x_loc + 3 * lift * z_loc - drag * x_loc) / Model::mass;
-
-    vel_cart(0, i - 1) = vel_pol(0, i - 1) * cos(vel_pol(1, i - 1));
-    vel_cart(1, i - 1) = vel_pol(0, i - 1) * sin(vel_pol(1, i - 1));
-
     //  position update
     opti.subject_to(
         pos(Slice(), i) ==
-        pos(Slice(), i - 1) + dt * vel_cart(Slice(), i - 1));
+        pos(Slice(), i - 1) + dt * vel(Slice(), i - 1));
     // velocity update
     opti.subject_to(
-        vel_cart(Slice(), i) ==
-        vel_cart(Slice(), i - 1) + dt * a + dt * g);
+        vel(Slice(), i) ==
+        vel(Slice(), i - 1) + dt * a + dt * g);
   }
 
   // initial state
   opti.subject_to(pos(Slice(), 0) == pos_0);
-  opti.subject_to(vel_pol(Slice(), 0) == vel_0);
+  opti.subject_to(vel(Slice(), 0) == vel_0);
 
   opti.set_initial(pos(Slice(), 0), pos_0);
-  opti.set_initial(vel_pol(Slice(), 0), vel_0);
+  opti.set_initial(vel(Slice(), 0), vel_0);
 
   ////////////////////////////////////////////////////////////////////// solving
   // suppress ipopt console output?
@@ -184,7 +172,7 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
   std::ofstream file;
   std::string path = "lib/mpc/out/" + file_name + ".csv";
   file.open(path);
-  file << "i,u0_opt,u1_opt,x,z,v_abs,v_arg,vx,vz,aoa,aoa_true\n";
+  file << "i,u0_opt,u1_opt,x,z,vx,vz,aoa,aoa_true\n";
   std::cout << path << std::endl;
   for (int i = 0; i < horizon; i++)
   {
@@ -198,17 +186,13 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
     file << pos_vec.at(0) << "," << pos_vec.at(1) << ",";
 
     // states (velocity)
-    std::vector<double> vel_pol_vec = DM::densify(sol.value(vel_pol)(Slice(), i)).nonzeros();
-    file << vel_pol_vec.at(0) << "," << vel_pol_vec.at(1) << ",";
-
-    // states (velocity)
-    std::vector<double> vel_cart_vec = DM::densify(sol.value(vel_cart)(Slice(), i)).nonzeros();
-    file << vel_cart_vec.at(0) << "," << vel_cart_vec.at(1) << ",";
+    std::vector<double> vel_vec = DM::densify(sol.value(vel)(Slice(), i)).nonzeros();
+    file << vel_vec.at(0) << "," << vel_vec.at(1) << ",";
 
     // angle of attack
     std::vector<double> aoa_vec = DM::densify(sol.value(angleOfAttack)(Slice(), i)).nonzeros();
     // double aoa = (180 / M_PI) * std::atan2(vel_vec.at(1), vel_vec.at(0));
-    file << aoa_vec.at(0) << "," << sol_vec.at(1) - std::atan2(vel_cart_vec.at(1), vel_cart_vec.at(0)) << "\n";
+    file << (180 / M_PI) * aoa_vec.at(0) << "," << (180 / M_PI) * std::atan2(vel_vec.at(1), vel_vec.at(0)) << "\n";
   }
   file.close();
 

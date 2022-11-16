@@ -1,4 +1,13 @@
 #pragma once
+#include <string>
+#include <chrono>
+#include <thread>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+
+// CASADI
+#include <casadi/casadi.hpp>
 
 namespace AttitudeMPC
 {
@@ -15,12 +24,16 @@ namespace AttitudeMPC
    * @param[in] debug_level Determines what is printed to the console:
    * 0 = nothing, 1 = final result only, 2 = full result, 3 = all
    */
-  void doControlStep(std::vector<double> &optimal_input,
+  void doControlStep(std::vector<std::vector<double>> &u_opt,
                      casadi::MX &pos_ref,
                      casadi::MX &vel_ref,
-                     casadi::DM &initial_state,
+                     casadi::DM &pos_0,
+                     casadi::DM &vel_0,
+                     casadi::DM &alpha_0,
                      double time,
-                     int debug_level);
+                     int debug_level,
+                     std::string file_name);
+
 }
 
 namespace Model
@@ -28,7 +41,7 @@ namespace Model
   // constants
   const double A_tot = 1;  // m2
   const double rho = 1.28; // kg_m3
-  const double mass = 3.5; // kg
+  const double mass = 1;   // kg
   // functions
   casadi::MX drag(casadi::MX aoA, casadi::MX speed_squared);
   casadi::MX lift(casadi::MX aoA, casadi::MX speed_squared);
