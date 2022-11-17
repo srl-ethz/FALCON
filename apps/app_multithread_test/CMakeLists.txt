@@ -1,0 +1,1 @@
+add_executable(multithread_test src/multithread_test.cpp)
