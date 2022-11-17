@@ -1,9 +1,7 @@
 #include <iostream>
 #include <thread>
-#include <list>
 #include <vector>
 #include <chrono>
-#include <algorithm>
 #include <mutex>
 
 // global unprotected variables
@@ -25,7 +23,7 @@ bool new_opt = false;
 
 void dummy_optimizer()
 {
-    // read protected
+    // read initial conditions (Mutex)
     std::vector<double> x0;
     {
         std::lock_guard<std::mutex> guard(myMutex);
@@ -34,6 +32,13 @@ void dummy_optimizer()
 
     // do optimization
     std::this_thread::sleep_for(std::chrono::milliseconds(rand() % (2001 - 500) + 500));
+    /*
+
+    PUT OPTIMIZER HERE
+
+    */
+
+    // write optimal control inputs into vector
     n_opt++;
     std::vector<std::vector<double>> u(n_inputs, std::vector<double>(iterations));
     for (int x = 0; x < n_inputs; x++)
@@ -44,7 +49,7 @@ void dummy_optimizer()
         }
     }
 
-    // write protected
+    // write optimal control inputs (Mutex)
     {
         std::lock_guard<std::mutex> guard(myMutex);
         optimal_controls = u;
@@ -53,7 +58,7 @@ void dummy_optimizer()
 
 void dummy_controller()
 {
-    // read protected
+    // read optimal control inputs (Mutex)
     std::vector<std::vector<double>> u(n_inputs, std::vector<double>(iterations));
     {
         std::lock_guard<std::mutex> guard(myMutex);
@@ -65,8 +70,16 @@ void dummy_controller()
     for (int i = 0; loop == true; i++)
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(int(1000 * dt)));
+        /*
+
+        PUT CONTROL INPUTS HERE
+
+        */
         std::cout << "control: " << u.at(0).at(i) << " , " << u.at(1).at(i) << std::endl;
-        n_ctrl++;
+
+        n_ctrl++; // counting variable for debugging
+
+        // check if new optimal control values available
         {
             std::lock_guard<std::mutex> guard(myMutex);
             if (new_opt == true)
@@ -76,13 +89,14 @@ void dummy_controller()
         }
     }
 
+    // write current values into inital condition vector for next optimization problem
     std::vector<double> x0(n_initial_conditions);
     for (int i = 0; i < n_initial_conditions; i++)
     {
         x0.at(i) = n_ctrl;
     }
 
-    // write protected
+    // write initial conditions (Mutex)
     {
         std::lock_guard<std::mutex> guard(myMutex);
         initial_condition = x0;
@@ -104,23 +118,23 @@ int main()
     // start multithreating
     while (true)
     {
-        new_opt = false;
-        n_ctrl = 0;
-        std::thread t1(dummy_optimizer);
-        std::thread t2(dummy_controller);
-        std::cout << "Done spawning threads. Now waiting for them to join:\n";
-        t1.join();
+        new_opt = false; // set new optimization available to false
+        n_ctrl = 0;      // Set count value to zero
+
+        // Spawn threads
+        std::thread optimization_thread(dummy_optimizer);
+        std::thread control_thread(dummy_controller);
+        // wait for optimization to finish
+        optimization_thread.join();
+        // update new_opt to tell control thread that new optimal control inputs are available
         {
             std::lock_guard<std::mutex> guard(myMutex);
             new_opt = true;
         }
-        t2.join();
+        // this results in control thread to end.
+        control_thread.join();
         std::cout << "control steps: " << n_ctrl << std::endl;
     }
-
-    // t1.join();
-    // t2.join();
-    // t3.join();
 
     return 0;
 }
