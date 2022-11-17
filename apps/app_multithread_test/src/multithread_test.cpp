@@ -15,8 +15,10 @@ const int iterations = int(horizon / dt);
 const int n_initial_conditions = 8;
 const int n_inputs = 2;
 
-std::mutex myMutex;
 // a global instance of std::mutex to protect global variable
+std::mutex myMutex;
+
+// values that are accessed by multiple threads and need to be guarded by mutex
 std::vector<double> initial_condition;
 std::vector<std::vector<double>> optimal_controls;
 bool new_opt = false;
