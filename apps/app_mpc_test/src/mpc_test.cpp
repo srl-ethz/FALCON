@@ -17,12 +17,14 @@ int main(int argc, char *argv[])
   DM pos_0 = DM::zeros(2, 1);
   DM vel_0 = DM::zeros(2, 1);
   DM alpha_0 = DM::zeros(1, 1);
+  DM beta_0 = DM::zeros(1, 1);
 
   pos_0(0, 0) = -5;
   pos_0(1, 0) = 6;
   vel_0(0, 0) = 8;
   vel_0(1, 0) = 0;
   alpha_0(0, 0) = 0.1;
+  beta_0(0, 0) = 0.0;
 
   // generate reference
   MX pos_ref = MX(2, 1);
@@ -39,7 +41,7 @@ int main(int argc, char *argv[])
   obj_ref(1, 0) = 4;
 
   // do control step
-  AttitudeMPC::doControlStep(u_opt, pos_ref, obj_ref, vel_ref, pos_0, vel_0, alpha_0, time_horizon, dt, 3, "test");
+  AttitudeMPC::doControlStep(u_opt, pos_ref, obj_ref, vel_ref, pos_0, vel_0, alpha_0, beta_0, time_horizon, dt, 3, "test");
 
   // print solution
   // std::cout << "OPTIMAL SOLUTION" << std::endl;

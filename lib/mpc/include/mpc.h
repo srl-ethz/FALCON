@@ -31,6 +31,7 @@ namespace AttitudeMPC
                      casadi::DM &pos_0,
                      casadi::DM &vel_0,
                      casadi::DM &alpha_0,
+                     casadi::DM &beta_0,
                      double time,
                      double dt,
                      int debug_level,
