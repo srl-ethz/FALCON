@@ -1,16 +1,17 @@
 #include <chrono>
-#include <thread>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <future>
+#include <iostream>
+#include <thread>
 // MAVSDK
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/action/action.h>
+#include <mavsdk/plugins/gimbal/gimbal.h>
+#include <mavsdk/plugins/manual_control/manual_control.h>
 #include <mavsdk/plugins/mavlink_passthrough/mavlink_passthrough.h>
 #include <mavsdk/plugins/offboard/offboard.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
-#include <mavsdk/plugins/manual_control/manual_control.h>
 
 // helpers
 #include "mavsdk_helper.h"
@@ -20,8 +21,7 @@ using std::chrono::milliseconds;
 using std::chrono::seconds;
 using std::this_thread::sleep_for;
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
   /* INITIALIZE LOGGING */
   std::ofstream myLog;
   std::string Name = "temp";
@@ -29,8 +29,7 @@ int main(int argc, char **argv)
   std::cout << "Started logging to log/" << Name << ".csv\n";
 
   /* INITIALIZE MAVSDK */
-  if (argc != 2)
-  {
+  if (argc != 2) {
     usage(argv[0]);
     return 1;
   }
@@ -38,79 +37,54 @@ int main(int argc, char **argv)
   Mavsdk mavsdk;
   ConnectionResult connection_result = mavsdk.add_any_connection(argv[1]);
 
-  if (connection_result != ConnectionResult::Success)
-  {
+  if (connection_result != ConnectionResult::Success) {
     std::cerr << "Connection failed: " << connection_result << '\n';
     return 1;
   }
 
   auto system = get_system(mavsdk);
-  if (!system)
-  {
+  if (!system) {
     return 1;
   }
 
   auto action = Action{system};       // for arming / disarming etc
   auto offboard = Offboard{system};   // for offboard control
   auto telemetry = Telemetry{system}; // for telemetry services
-  // auto mavlink = MavlinkPassthrough{system}; // for mavlink passtrough
-  auto manual = ManualControl{system};
+  auto mavlink = MavlinkPassthrough{system};
+  // auto gripper = Gimbal{system};
+
   std::cout << "System is ready\n";
 
   /* ARM PLANE */
   const auto arm_result = action.arm();
 
-  /* MAVLINK PASSTROUGH */
-  // mavsdk::MavlinkPassthrough::CommandLong cmd;
-  // cmd.command = MAV_CMD_DO_SET_ACTUATOR;
-  // cmd.target_sysid = mavlink.get_target_sysid();
-  // cmd.param1 = 0;
-  // cmd.param2 = 0.5;
-  // cmd.param3 = 0;
-  // cmd.param4 = 0;
-  // cmd.param5 = 0;
-  // cmd.param6 = 0;
-  // cmd.param7 = 0;
-
-  // const mavsdk::MavlinkPassthrough::CommandLong conscmd = cmd;
-
-  // for (int i = 0; i < 10; i++)
-  // {
-  //   mavlink.send_command_long(conscmd);
-  //   sleep_for(milliseconds(500));
-  // }
-  // /* ATTITUDE OFFBOARD */
-  // std::cout << "Starting Offboard attitude control\n";
-
-  // // Send it once before starting offboard, otherwise it will be rejected.
-  // Offboard::Attitude att_msg{};
-  // att_msg.roll_deg = 0;
-
-  // Offboard::Result offboard_result = offboard.start();
-  // if (offboard_result != Offboard::Result::Success)
-  // {
-  //   std::cerr << "Offboard start failed: " << offboard_result << '\n';
-  //   return false;
-  // }
-  // std::cout << "Offboard started\n";
-
-  // std::cout << "Roll 30 degrees to the right\n";
-  // offboard.set_attitude(att_msg);
-  // sleep_for(seconds(10));
-
-  // offboard_result = offboard.stop();
-  // if (offboard_result != Offboard::Result::Success)
-  // {
-  //   std::cerr << "Offboard stop failed: " << offboard_result << '\n';
-  //   return false;
-  // }
-  // std::cout << "Offboard stopped\n";
-
   /* STARTING OFFBOARD */
   // construct actuator control group message right to evade Segmenation faults.
+
+  // std::this_thread::sleep_for(milliseconds(200));
+
+  // for (float u = -1; u <= 1; u += 0.1) {
+  //   gripper.set_pitch_and_yaw(u, u);
+  //   // send thrust command
+  //   std::cout << "now setting input to = " << u << std::endl;
+
+  //   std::this_thread::sleep_for(milliseconds(500));
+  // }
+  MavlinkPassthrough::CommandLong cmd;
+  cmd.command = MAV_CMD_DO_SET_SERVO;
+  cmd.target_sysid = mavlink.get_target_sysid();
+  cmd.target_compid = mavlink.get_target_compid();
+  cmd.param1 = 7;
+
+  for (int u = 1000; u <= 2000; u++) {
+
+    cmd.param2 = u;
+    mavlink.send_command_long(cmd);
+    std::this_thread::sleep_for(milliseconds(500));
+  }
+
   // std::vector<float> grp;
-  // for (int i = 0; i < 8; i++)
-  // {
+  // for (int i = 0; i < 8; i++) {
   //   grp.push_back(0.5);
   // }
   // Offboard::ActuatorControl act_cmd{};
@@ -120,43 +94,20 @@ int main(int argc, char **argv)
   // grp2.controls = grp;
   // act_cmd.groups.push_back(grp1);
   // act_cmd.groups.push_back(grp2);
-  // // Offboard::ActuatorControlGroup grp2{};
-  // std::cout << "starting offboard" << std::endl;
+
+  // std::this_thread::sleep_for(milliseconds(200));
+
   // offboard.set_actuator_control(act_cmd);
-  // std::cout << "started offboard" << std::endl;
-  // // start offboard
-  // Offboard::Result offboard_result = offboard.start();
+  // auto offboard_result = offboard.start();
   // std::cout << offboard_result << std::endl;
 
-  // act_cmd.groups.push_back(grp2);
-  std::this_thread::sleep_for(milliseconds(500));
-
-  // std::this_thread::sleep_for(milliseconds(2500));
-
-  /* GO THROUGHT ALL ANGLES FROM -1 TO 1 */
-  for (float u = 0; u <= 1; u += 0.1)
-  {
-    manual.set_manual_control_input(0, 0, u, 0);
-    // send thrust command
-    std::cout << "now setting input to = " << u << std::endl;
-    // act_cmd.groups.at(0).controls.at(0) = u;
-    // std::cout << act_cmd.groups.at(0).controls.at(0) << std::endl;
-    // auto Result = offboard.set_actuator_control(act_cmd);
-    // std::cout << Result << std::endl;
-    // // wait for thrust to settle
-    std::this_thread::sleep_for(milliseconds(1000));
-  }
-
-  /* GO THROUGHT ALL THROTTLES FROM 0 TO 1 */
-  // for (float throttle = 0.05; throttle <= 1.05; throttle += 0.05)
-  // {
+  // for (float u = -1; u <= 1; u += 0.1) {
+  //   act_cmd.groups.at(0).controls.at(0) = u;
   //   // send thrust command
-  //   std::cout << "now setting throttle = " << throttle << std::endl;
-  //   act_cmd.groups.at(0).controls.at(3) = throttle;
-  //   offboard.set_actuator_control(act_cmd);
+  //   std::cout << "now setting input to = " << u << std::endl;
 
-  //   // wait for thrust to settle
-  //   std::this_thread::sleep_for(milliseconds(10000));
+  //   offboard.set_actuator_control(act_cmd);
+  //   std::this_thread::sleep_for(milliseconds(500));
   // }
 
   // stop offboard
