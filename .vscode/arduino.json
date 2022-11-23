@@ -1,0 +1,5 @@
+{
+    "board": "arduino:avr:micro",
+    "sketch": "apps/app_gripper_test/Arduino Files/gripper/gripper.ino",
+    "port": "/dev/ttyACM0"
+}

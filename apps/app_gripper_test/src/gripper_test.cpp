@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
   // initialize Data
   unsigned char Command_Data[] = {0};
 
-  for (int i = 0; i < 180; i++) {
+  for (unsigned char i = 0; i < 180; i += 45) {
     /* SERIAL SENDING */
 
     //  write bytes (8bit = cnversion to char type)
