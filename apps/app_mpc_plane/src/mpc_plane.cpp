@@ -12,6 +12,7 @@
 
 // MAVSDK
 #include "mavsdk/plugins/mission/mission.h"
+#include "mavsdk/plugins/mission_raw/mission_raw.h"
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/action/action.h>
 #include <mavsdk/plugins/offboard/offboard.h>
@@ -35,10 +36,20 @@ const double p1_lat = 47.3978404;
 const double p2_long = 8.5456071;
 const double p2_lat = 47.3976608;
 
-// vector from p1 to p2
-const double dir_long = p2_long - p1_long;
-const double dir_lat = p2_lat - p1_lat;
-const double dir_len = std::sqrt(dir_long * dir_long + dir_lat * dir_lat);
+// way point after pickup (mission dependent)
+const double obj_long = 8.5456071;
+const double obj_lat = 47.3976608;
+const double obj_alt = 1.0;
+
+const double grasp_length =
+    10.0; // length from beginning of MPC control to object (or
+          // from object to end of MPC control)
+
+// normalized vector from p1 to p2
+const double dir_len = std::sqrt((p2_long - p1_long) * (p2_long - p1_long) +
+                                 (p2_lat - p1_lat) * (p2_lat - p1_lat));
+const double dir_long = (p2_long - p1_long) / dir_len;
+const double dir_lat = (p2_lat - p1_lat) / dir_len;
 
 // global unprotected variables
 int n_opt = 0;
@@ -65,6 +76,7 @@ std::vector<double> initial_condition(n_initial_conditions);
 std::vector<std::vector<double>>
     optimal_controls(n_inputs, std::vector<double>(iterations));
 bool new_opt = false;
+bool mpc_finished = false;
 
 // generate reference
 MX pos_ref = MX(2, 1);
@@ -121,7 +133,7 @@ int main(int argc, char **argv) {
   Offboard offboard = Offboard{system};    // for offboard control
   Telemetry telemetry = Telemetry{system}; // for telemetry services
   Mission mission = Mission{system};
-
+  MissionRaw missionRaw = MissionRaw{system};
   std::cout << "System is ready\n";
 
   /* INITIALIZE OPTIMIZER */
@@ -149,6 +161,16 @@ int main(int argc, char **argv) {
   action.arm();
   std::this_thread::sleep_for(std::chrono::milliseconds(1500));
   mission.start_mission();
+
+  // wait until out first mission checkpoint is reached
+  while (true) {
+    std::cout << "takoff not yet complete" << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    if (missionRaw.mission_progress().current == 2) {
+      break;
+    }
+  }
+  std::cout << "Now watiting for MPC action!" << std::endl;
 
   std::vector<double> dir(2);
   dir.at(0) = deg_to_m(p2_long - p1_long);
@@ -199,8 +221,8 @@ int main(int argc, char **argv) {
   double lat_err_sum = 0;
   int test = 4;
 
-  // start multithreating
-  while (true) {
+  // start MPC Controller
+  while (mpc_finished == false) {
     new_opt = false; // set new optimization available to false
     n_ctrl = 0;      // Set count value to zero
 
@@ -221,10 +243,16 @@ int main(int argc, char **argv) {
     std::cout << "NEW OPTIMAL CONTROL STRATEGIES AVAILABLE" << std::endl;
     // this results in control thread to end.
     control_thread.join();
-    std::cout << "control steps: " << n_ctrl << std::endl;
+    // TODO implement finishing criterion
   }
 
-  return 0;
+  std::cout << "Finished MPC -> continuing mission" << std::endl;
+  offboard.stop();
+  mission.start_mission();
+  std::cout << "continued mission -> MPC Program will now stop! "
+               "Good Luck Landing that aircraft :)"
+            << std::endl;
+  // return 0;
 }
 
 void controller(Offboard &offboard, Telemetry &telemetry) {
@@ -244,6 +272,11 @@ void controller(Offboard &offboard, Telemetry &telemetry) {
     PUT CONTROL INPUTS HERE
 
     */
+    Offboard::Attitude msg;
+    msg.pitch_deg = u.at(1).at(i);
+    msg.thrust_value = u.at(0).at(i);
+    offboard.set_attitude(msg);
+
     std::cout << "control: " << u.at(0).at(i) << " , " << u.at(1).at(i) << " , "
               << u.at(2).at(i) << std::endl;
 
@@ -258,13 +291,30 @@ void controller(Offboard &offboard, Telemetry &telemetry) {
     }
   }
 
-  // write current values into inital condition vector for next optimization
-  // problem
-  std::vector<double> x0(n_initial_conditions);
-  for (int i = 0; i < n_initial_conditions; i++) {
-    x0.at(i) = n_ctrl;
-  }
+  // determine coordinates in xz-plane //TODO compress
+  //  current position
+  double pos_long = telemetry.position().longitude_deg - obj_long;
+  double pos_lat = telemetry.position().latitude_deg - obj_lat;
 
+  // progress along mission route
+  double x = deg_to_m(pos_long * dir_long + pos_lat * dir_lat);
+  double vx = telemetry.velocity_ned().north_m_s * dir_lat +
+              telemetry.velocity_ned().east_m_s * dir_long;
+  // write current values into inital condition vector for
+  // next optimization problem
+  std::vector<double> x0(n_initial_conditions);
+  x0.at(0) = x;                                        // x-position
+  x0.at(1) = telemetry.position().relative_altitude_m; // z-position
+  x0.at(2) = vx;                                       // vx-velocity
+  x0.at(3) = -telemetry.velocity_ned().down_m_s;       // vz-velocity
+  x0.at(4) = telemetry.attitude_euler().pitch_deg * M_PI /
+             180; // pitch angle (evt need to change that value)
+  x0.at(5) = 0.0; // arm angle
+
+  // check if MPC Control part is finished
+  if (x > grasp_length) {
+    mpc_finished = true;
+  }
   // write initial conditions (Mutex)
   {
     std::lock_guard<std::mutex> guard(myMutex);
