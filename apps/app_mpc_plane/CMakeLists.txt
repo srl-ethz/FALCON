@@ -5,4 +5,5 @@ target_include_directories(mpc_plane PUBLIC include)
 target_link_libraries(mpc_plane PRIVATE 
   casadi
   mpc  
+  MAVSDK::mavsdk
 )

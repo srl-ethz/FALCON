@@ -26,6 +26,7 @@ const double R = 6378137; // earths Radius in [m]
 //  way point before pickup (mission dependent)
 const double p1_long = 8.5494224;
 const double p1_lat = 47.3982380;
+const double p1_alt = 10; // altitude relative to launch
 
 // way point after pickup (mission dependent)
 const double p2_long = 8.5429150;
@@ -111,14 +112,14 @@ int main(int argc, char **argv) {
 
   double len_sq = dir.at(0) * dir.at(0) + dir.at(1) * dir.at(1);
 
-  while (true) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    double x = 0, y = 0, z = 0;
-    gps_to_xyz(telemetry.position().longitude_deg,
-               telemetry.position().latitude_deg,
-               telemetry.position().absolute_altitude_m, x, y, z);
-    std::cout << x << "\t\t" << y << "\t\t" << z << std::endl;
-  }
+  // while (true) {
+  //   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+  //   double x = 0, y = 0, z = 0;
+  //   gps_to_xyz(telemetry.position().longitude_deg,
+  //              telemetry.position().latitude_deg,
+  //              telemetry.position().absolute_altitude_m, x, y, z);
+  //   std::cout << x << "\t\t" << y << "\t\t" << z << std::endl;
+  // }
 
   while (true) {
 
@@ -137,11 +138,11 @@ int main(int argc, char **argv) {
     std::vector<double> abw(2);
     abw.at(0) = pos.at(0) - prog * dir.at(0);
     abw.at(1) = pos.at(1) - prog * dir.at(1);
-    double abw_len = std::sqrt(abw.at(0) * abw.at(0) + abw.at(1) * abw.at(1));
+    double lat_err = std::sqrt(abw.at(0) * abw.at(0) + abw.at(1) * abw.at(1));
 
     // check if offboard should begin
-    std::cout << prog << std::endl;
-    if (abw_len < 1 && abw_len > -1 && prog < 0.8 && prog > 0.2) {
+    // std::cout << prog << std::endl;
+    if (lat_err < 1 && lat_err > -1 && prog < 1 && prog > 0) {
       break;
     }
   }
@@ -153,7 +154,7 @@ int main(int argc, char **argv) {
   Offboard::Attitude msg;
   msg.pitch_deg = 0;
   msg.roll_deg = 0;
-  msg.thrust_value = 0.75;
+  msg.thrust_value = 0.3;
   msg.yaw_deg = yaw;
   offboard.set_attitude(msg);
 
@@ -161,11 +162,12 @@ int main(int argc, char **argv) {
   offboard.start();
 
   // control parameters
-  const double yaw_P = 10;
-  const double yaw_I = 5;
+  const double yaw_P = 1.0;
+  const double yaw_I = 0.2;
 
   // I error
-  double abw_error_sum = 0;
+  double lat_err_sum = 0;
+  double alt_err_sum = 0;
 
   while (true) {
     // delay
@@ -182,18 +184,23 @@ int main(int argc, char **argv) {
     std::vector<double> abw(2);
     abw.at(0) = pos.at(0) - prog * dir.at(0);
     abw.at(1) = pos.at(1) - prog * dir.at(1);
-    double abw_len = std::sqrt(abw.at(0) * abw.at(0) + abw.at(1) * abw.at(1));
+    double lat_err = std::sqrt(abw.at(0) * abw.at(0) + abw.at(1) * abw.at(1));
+    if ((pos.at(0) * dir.at(1) - pos.at(1) * dir.at(0)) < 0) {
+      // std::cout << "INVERT" << std::endl;
+      lat_err = -lat_err;
+    }
+    double alt_err = p1_alt - telemetry.position().relative_altitude_m;
 
     // ctrl loop.
-    abw_error_sum += abw_len * Ts;
-    msg.yaw_deg = yaw_P * abw_len + yaw_I * abw_error_sum;
+    lat_err_sum += lat_err * Ts;
+    msg.yaw_deg = yaw - (yaw_P * lat_err + yaw_I * lat_err_sum);
 
     // Send msg
     offboard.set_attitude(msg);
-    std::cout << msg.yaw_deg << std::endl;
-    std::cout << prog << "\t" << abw_len << std::endl;
-    // check if offboard should begin
-    if (!(abw_len < 10 && abw_len > -10 && prog < 0.8 && prog > 0.2)) {
+    std::cout << lat_err << "\t" << msg.yaw_deg << std::endl;
+    // std::cout << prog << "\t" << lat_err << std::endl;
+    //  check if offboard should begin
+    if (!(lat_err < 10 && lat_err > -10 && prog < 1.0 && prog > 0)) {
       break;
     }
   }
