@@ -29,16 +29,16 @@ using std::this_thread::sleep_for;
 using namespace casadi;
 
 //  way point before pickup (mission dependent)
-const double p1_long = 8.5456071;
-const double p1_lat = 47.3978404;
+const double p1_long = 8.387438115684935;
+const double p1_lat = 47.42465027591855;
 
 // way point after pickup (mission dependent)
-const double p2_long = 8.5456071;
-const double p2_lat = 47.3976608;
+const double p2_long = 8.387276484315064;
+const double p2_lat = 47.42472872408145;
 
 // way point after pickup (mission dependent)
-const double obj_long = 8.5456071;
-const double obj_lat = 47.3976608;
+const double obj_long = 8.3873573;
+const double obj_lat = 47.4246895;
 const double obj_alt = 1.0;
 
 const double grasp_length =
@@ -60,9 +60,9 @@ const double yaw_P = 1.0;
 const double yaw_I = 0.2;
 
 // global read variables
-const double time_horizon = 1.0;
+const double time_horizon = 0.5;
 const double R = 6378137; // earths Radius in [m]
-const double dt = 0.1;
+const double dt = 0.05;
 const int iterations = int(time_horizon / dt);
 const int n_initial_conditions = 6;
 const int n_inputs = 3;
@@ -148,7 +148,7 @@ int main(int argc, char **argv) {
 
   // first initial condition = entry into offboard-zone
   initial_condition.at(0) = -10.0; // x-position
-  initial_condition.at(1) = 2.0;   // z-position
+  initial_condition.at(1) = 1.0;   // z-position
   initial_condition.at(2) = 8.0;   // vx-velocity
   initial_condition.at(3) = 0.0;   // vz-velocity
   initial_condition.at(4) = 0.0; // pitch angle (evt need to change that value)
@@ -252,7 +252,7 @@ int main(int argc, char **argv) {
   std::cout << "continued mission -> MPC Program will now stop! "
                "Good Luck Landing that aircraft :)"
             << std::endl;
-  // return 0;
+  return 0;
 }
 
 void controller(Offboard &offboard, Telemetry &telemetry) {
@@ -265,6 +265,7 @@ void controller(Offboard &offboard, Telemetry &telemetry) {
 
   // do controls
   bool loop = true;
+  double gripper_angle = 0;
   for (int i = 0; loop == true; i++) {
     std::this_thread::sleep_for(std::chrono::milliseconds(int(1000 * dt)));
     /*
@@ -273,13 +274,22 @@ void controller(Offboard &offboard, Telemetry &telemetry) {
 
     */
     Offboard::Attitude msg;
-    msg.pitch_deg = u.at(1).at(i);
-    msg.thrust_value = u.at(0).at(i);
+    if (i < u.size()) {
+      // set optimal control values
+      msg.pitch_deg = u.at(1).at(i);
+      msg.thrust_value = u.at(0).at(i);
+      gripper_angle = u.at(2).at(i);
+
+    } else {
+      // set standard values if optimization algorithm didn't converge
+      msg.pitch_deg = 0;
+      msg.thrust_value = 0.5;
+      gripper_angle = 60;
+    }
+    std::cout << "control: " << msg.pitch_deg << " , " << msg.thrust_value
+              << " , " << gripper_angle << std::endl;
+
     offboard.set_attitude(msg);
-
-    std::cout << "control: " << u.at(0).at(i) << " , " << u.at(1).at(i) << " , "
-              << u.at(2).at(i) << std::endl;
-
     n_ctrl++; // counting variable for debugging
 
     // check if new optimal control values available
@@ -348,10 +358,12 @@ void optimizer() {
   alpha_0(0, 0) = x0.at(4); // 0.1;
   beta_0(0, 0) = x0.at(5);
 
+  std::string file_name = "real" + str(n_opt);
+
   // do optimization
   AttitudeMPC::doControlStep(u_opt, pos_ref, obj_ref, vel_ref, pos_0, vel_0,
                              alpha_0, beta_0, time_horizon, dt, debug_level,
-                             "real");
+                             file_name);
 
   n_opt++;
 
