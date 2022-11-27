@@ -17,7 +17,6 @@ length = 0.4
 grip_x = data['x']+length*np.cos(data['u1_opt'] - data['u2_opt']);
 grip_z = data['z']+length*np.sin(data['u1_opt'] - data['u2_opt']);
 
-
 ax.scatter(data['x'],data['z'],marker='x')
 #ax.scatter(data['gripx'],data['gripz'],marker='o',color='black')
 ax.scatter(grip_x,grip_z,marker='o',color='black')

@@ -60,9 +60,9 @@ const double yaw_P = 1.0;
 const double yaw_I = 0.2;
 
 // global read variables
-const double time_horizon = 0.5;
+const double time_horizon = 2.5;
 const double R = 6378137; // earths Radius in [m]
-const double dt = 0.05;
+const double dt = 0.02;
 const int iterations = int(time_horizon / dt);
 const int n_initial_conditions = 6;
 const int n_inputs = 3;
@@ -75,38 +75,22 @@ std::mutex myMutex;
 std::vector<double> initial_condition(n_initial_conditions);
 std::vector<std::vector<double>>
     optimal_controls(n_inputs, std::vector<double>(iterations));
-bool new_opt = false;
-bool mpc_finished = false;
+bool MUTEX_new_opt = false;
+bool MUTEX_mpc_finished = false;
 
 // generate reference
 MX pos_ref = MX(2, 1);
 MX obj_ref = MX(2, 1);
 MX vel_ref = MX(2, 1);
 
+// helper function from gps coordinates to meters
 double deg_to_m(double deg) {
   double R = 6378000.137; // Radius of earth in m
   return M_PI * R * deg / 180;
 }
 
-double m_to_deg(double m) {
-  double R = 6378000.137; // Radius of earth in m
-  return (m * 180) / (M_PI * R);
-}
-
-// void gps_to_xyz(double lon, double lat, double alt, double &x, double &y,
-//                 double &z) {
-
-//   z = alt - obj_alt;
-//   x = (((lon - p1_long) * dir_long + (lat - p1_lat) * dir_lat) / dir_len -
-//        dir_len) *
-//       R * M_PI / 180;
-//   y = (((lon - p1_long) * dir_lat - (lat - p1_lat) * dir_long) / dir_len) * R
-//   *
-//       M_PI / 180;
-//   ;
-// }
-
-void controller(Offboard &offboard, Telemetry &telemetry);
+// declare threads
+void controller(Offboard &offboard, Telemetry &telemetry, std::ofstream &log);
 void optimizer();
 
 int main(int argc, char **argv) {
@@ -141,36 +125,39 @@ int main(int argc, char **argv) {
   // 10 meters in deg: 0.0000898246531
   pos_ref(0, 0) = 10;
   pos_ref(1, 0) = 2;
-  vel_ref(0, 0) = 8;
+  vel_ref(0, 0) = 10;
   vel_ref(1, 0) = 0;
   obj_ref(0, 0) = 0;
-  obj_ref(1, 0) = 1;
+  obj_ref(1, 0) = 2;
 
   // first initial condition = entry into offboard-zone
   initial_condition.at(0) = -10.0; // x-position
-  initial_condition.at(1) = 1.0;   // z-position
-  initial_condition.at(2) = 8.0;   // vx-velocity
+  initial_condition.at(1) = 2.0;   // z-position
+  initial_condition.at(2) = 10.0;  // vx-velocity
   initial_condition.at(3) = 0.0;   // vz-velocity
   initial_condition.at(4) = 0.0; // pitch angle (evt need to change that value)
   initial_condition.at(5) = 0.0; // arm angle
 
   // run first optimization
+  std::cout << "searching optimal solution ..." << std::endl;
   optimizer();
+  std::cout << "solved first optimization problem:" << std::endl;
 
   /* START MISSION AND WAIT FOR OFFBOARD ACTIVATION */
   action.arm();
-  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+  std::this_thread::sleep_for(
+      std::chrono::milliseconds(1000)); // wait for arming to complete
   mission.start_mission();
 
   // wait until out first mission checkpoint is reached
+  std::cout << "takoff not yet complete..." << std::endl;
   while (true) {
-    std::cout << "takoff not yet complete" << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
     if (missionRaw.mission_progress().current == 2) {
       break;
     }
   }
-  std::cout << "Now watiting for MPC action!" << std::endl;
+  std::cout << "takeoff complete, Now watiting for MPC action!" << std::endl;
 
   std::vector<double> dir(2);
   dir.at(0) = deg_to_m(p2_long - p1_long);
@@ -204,6 +191,11 @@ int main(int argc, char **argv) {
     }
   }
 
+  std::ofstream file;
+  std::string path = "apps/app_mpc_plane/log/log.csv";
+  file.open(path);
+  file << "u0_opt,u1_opt,u2_opt,x,z,vx,vz,pitch\n";
+
   double yaw = telemetry.attitude_euler().yaw_deg;
   std::cout << "starting offboard" << std::endl;
 
@@ -222,26 +214,29 @@ int main(int argc, char **argv) {
   int test = 4;
 
   // start MPC Controller
-  while (mpc_finished == false) {
-    new_opt = false; // set new optimization available to false
-    n_ctrl = 0;      // Set count value to zero
+  while (MUTEX_mpc_finished == false) {
+    {
+      std::lock_guard<std::mutex> guard(myMutex);
+      MUTEX_new_opt = false; // set new optimization available to false
+    }
+    n_ctrl = 0; // Set count value to zero
 
     // Spawn threads
 
-    std::thread optimization_thread(optimizer);
+    // std::thread optimization_thread(optimizer);
     std::thread control_thread =
-        std::thread{controller, std::ref(offboard),
-                    std::ref(telemetry)}; //(controller, offboard);
+        std::thread{controller, std::ref(offboard), std::ref(telemetry),
+                    std::ref(file)}; //(controller, offboard);
     // wait for optimization to finish
-    optimization_thread.join();
+    // optimization_thread.join();
     // update new_opt to tell control thread that new optimal control inputs are
     // available
-    {
-      std::lock_guard<std::mutex> guard(myMutex);
-      new_opt = true;
-    }
-    std::cout << "NEW OPTIMAL CONTROL STRATEGIES AVAILABLE" << std::endl;
-    // this results in control thread to end.
+    // {
+    //   std::lock_guard<std::mutex> guard(myMutex);
+    //   MUTEX_new_opt = true;
+    // }
+    // std::cout << "NEW OPTIMAL CONTROL STRATEGIES AVAILABLE" << std::endl;
+    //  this results in control thread to end.
     control_thread.join();
     // TODO implement finishing criterion
   }
@@ -252,10 +247,11 @@ int main(int argc, char **argv) {
   std::cout << "continued mission -> MPC Program will now stop! "
                "Good Luck Landing that aircraft :)"
             << std::endl;
+  file.close();
   return 0;
 }
 
-void controller(Offboard &offboard, Telemetry &telemetry) {
+void controller(Offboard &offboard, Telemetry &telemetry, std::ofstream &log) {
   // read optimal control inputs (Mutex)
   std::vector<std::vector<double>> u(n_inputs, std::vector<double>(iterations));
   {
@@ -266,38 +262,57 @@ void controller(Offboard &offboard, Telemetry &telemetry) {
   // do controls
   bool loop = true;
   double gripper_angle = 0;
+
   for (int i = 0; loop == true; i++) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(int(1000 * dt)));
-    /*
-
-    PUT CONTROL INPUTS HERE
-
-    */
+    // CONTROL INPUTS HERE
     Offboard::Attitude msg;
-    if (i < u.size()) {
+    if (i < u.at(0).size()) {
       // set optimal control values
-      msg.pitch_deg = u.at(1).at(i);
+      msg.pitch_deg = u.at(1).at(i) * (180 / M_PI);
       msg.thrust_value = u.at(0).at(i);
       gripper_angle = u.at(2).at(i);
+      std::cout << "control: " << msg.pitch_deg << " , " << msg.thrust_value
+                << " , " << gripper_angle << std::endl;
 
     } else {
       // set standard values if optimization algorithm didn't converge
+      std::cout << "NO VARIABLES" << std::endl;
       msg.pitch_deg = 0;
       msg.thrust_value = 0.5;
       gripper_angle = 60;
     }
-    std::cout << "control: " << msg.pitch_deg << " , " << msg.thrust_value
-              << " , " << gripper_angle << std::endl;
 
-    offboard.set_attitude(msg);
-    n_ctrl++; // counting variable for debugging
+    offboard.set_attitude(msg); // send offboard msg
+    n_ctrl++;                   // counting variable for debugging
+
+    // logging (u0,u1,u2,x,z,vx,vz)
+    double pos_long = telemetry.position().longitude_deg - obj_long;
+    double pos_lat = telemetry.position().latitude_deg - obj_lat;
+    double x = deg_to_m(pos_long * dir_long + pos_lat * dir_lat);
+    double vx = telemetry.velocity_ned().north_m_s * dir_lat +
+                telemetry.velocity_ned().east_m_s * dir_long;
+
+    log << msg.thrust_value << "," << msg.pitch_deg * (M_PI / 180) << ","
+        << gripper_angle << "," << x << ","
+        << telemetry.position().relative_altitude_m << "," << vx << ","
+        << -telemetry.velocity_ned().down_m_s << ","
+        << telemetry.attitude_euler().pitch_deg * M_PI / 180 << "\n";
+
+    // sleep, but divde dt by 10 to get 10 small sleeps and check on new
+    std::this_thread::sleep_for(std::chrono::milliseconds(int(1000 * dt)));
 
     // check if new optimal control values available
     {
       std::lock_guard<std::mutex> guard(myMutex);
-      if (new_opt == true) {
+      if (MUTEX_new_opt == true) {
         loop = false;
       }
+    }
+
+    // check if mpc part is finished
+    if (x > grasp_length) {
+      loop = false;
+      MUTEX_mpc_finished = true;
     }
   }
 
@@ -318,12 +333,15 @@ void controller(Offboard &offboard, Telemetry &telemetry) {
   x0.at(2) = vx;                                       // vx-velocity
   x0.at(3) = -telemetry.velocity_ned().down_m_s;       // vz-velocity
   x0.at(4) = telemetry.attitude_euler().pitch_deg * M_PI /
-             180; // pitch angle (evt need to change that value)
-  x0.at(5) = 0.0; // arm angle
+             180;           // pitch angle (evt need to change that value)
+  x0.at(5) = gripper_angle; // arm angle
 
   // check if MPC Control part is finished
   if (x > grasp_length) {
-    mpc_finished = true;
+    {
+      std::lock_guard<std::mutex> guard(myMutex);
+      MUTEX_mpc_finished = true;
+    }
   }
   // write initial conditions (Mutex)
   {

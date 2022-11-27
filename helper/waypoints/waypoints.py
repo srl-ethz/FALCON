@@ -15,11 +15,13 @@ dir = (obj-p1)/np.linalg.norm(obj-p1)
 d_deg = (d*180)/(np.pi*R)
 p1_opt = obj - d_deg*dir
 p2_opt = obj + d_deg*dir
+pfar_opt = obj + 30*d_deg*dir
 
 #PRINT RESULT
 print("obj: ["+str(obj[0])+", "+str(obj[1])+"]")
 print("p1: ["+str(p1_opt[0])+", "+str(p1_opt[1])+"]")
 print("p2: ["+str(p2_opt[0])+", "+str(p2_opt[1])+"]")
+print("pfar: ["+str(pfar_opt[0])+", "+str(pfar_opt[1])+"]") #point far away for alignment
 
 #VISUALIZATION
 # plt.scatter(obj[0],obj[1],color='green')

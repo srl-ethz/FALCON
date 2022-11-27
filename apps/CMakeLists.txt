@@ -1,7 +1,8 @@
 add_subdirectory(app_actuator_test)
 add_subdirectory(app_flight_logger)
-add_subdirectory(app_mpc_test)
-add_subdirectory(app_mpc_plane)
+add_subdirectory(app_traj_gen)
+#add_subdirectory(app_mpc_plane) old optimizer syntax causes error
 add_subdirectory(app_mission)
 add_subdirectory(app_gripper_test)
 add_subdirectory(app_multithread_test)
+add_subdirectory(app_grasper)
