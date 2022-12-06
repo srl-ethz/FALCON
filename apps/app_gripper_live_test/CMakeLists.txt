@@ -1,2 +1,0 @@
-add_executable(gripper_live_test src/gripper_live_test.cpp serialib/serialib.cpp)
-target_include_directories(gripper_live_test PUBLIC serialib)

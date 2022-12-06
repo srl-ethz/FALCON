@@ -1,0 +1,5 @@
+add_executable(gripper_mocap_test src/gripper_mocap_test.cpp serialib/serialib.cpp)
+target_include_directories(gripper_mocap_test PUBLIC serialib)
+target_link_libraries(gripper_mocap_test
+ViconDataStreamSDK_lib
+)
