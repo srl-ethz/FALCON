@@ -20,19 +20,20 @@ def speed_to_arrow_length(speed):
 
 
 # Define initial parameters
-init_height = 1.0
-init_speed = 10.0
+init_height = 1.5
+init_speed = 12.0
 
 #Other Parameters
 length = 0.1 #length of plane arrow in plot
-
+grip_length_m = 5 #grip length before object
+grip_length_p = 2 #grip length behind object
+obj_height=1.5
 # Create the figure and the line that we will manipulate
 fig, ax = plt.subplots()
 #line, = ax.plot(t, f(t, init_height, init_speed))
 idx = get_indices(init_height,init_height)
 traj, = ax.plot(data['x'][idx],data['z'][idx])
 ax.scatter(data['gripx'][idx],data['gripz'][idx],marker='o',color='black')
-
 for i in idx:
     ax.arrow(data['x'][i],data['z'][i],data['gripx'][i]-data['x'][i],data['gripz'][i]-data['z'][i],color='black')
     ax.arrow(   data['x'][i] - length*np.cos(data['u1_opt'])[i],
@@ -41,10 +42,10 @@ for i in idx:
                 2*length*np.sin(data['u1_opt'])[i],color='blue',width=0.03)
 
 
-arrow = ax.arrow(-2-speed_to_arrow_length(init_speed),init_height,speed_to_arrow_length(init_speed),0,color='red',width=0.01)
-object = ax.scatter(0,1,marker='x',s=4)
+arrow = ax.arrow(-grip_length_m-speed_to_arrow_length(init_speed),init_height,speed_to_arrow_length(init_speed),0,color='red',width=0.01)
+object = ax.scatter(0,obj_height,marker='x',s=6)
 ax.set_xlabel('x [m]')
-ax.set_xlim(-3,2)
+ax.set_xlim(-grip_length_m-1,grip_length_p)
 ax.set_ylim(0,2.5)
 
 # adjust the main plot to make room for the sliders
@@ -55,9 +56,9 @@ aspeed = fig.add_axes([0.25, 0.1, 0.65, 0.03])
 speed_slider = Slider(
     ax=aspeed,
     label='Velocity',
-    valmin=9,
+    valmin=10,
     valstep=0.25,
-    valmax=12.25,
+    valmax=12,
     valinit=init_speed,
 )
 # Make a vertically oriented slider to control the height
@@ -65,9 +66,9 @@ axheight = fig.add_axes([0.1, 0.25, 0.0225, 0.63])
 height_slider = Slider(
     ax=axheight,
     label="Height",
-    valmin=0.7,
+    valmin=1.3,
     valstep=0.05,
-    valmax=1.3,
+    valmax=1.7,
     valinit=init_height,
     orientation="vertical"
 )
@@ -76,23 +77,19 @@ height_slider = Slider(
 # The function to be called anytime a slider's value changes
 def update(val):
     ax.cla()
-    ax.set_xlim(-3,2)
+    ax.set_xlim(-grip_length_m-1,grip_length_p)
     ax.set_ylim(0,2.5)
     idx = get_indices(height_slider.val,speed_slider.val)
     ax.plot(data['x'][idx],data['z'][idx])
     ax.scatter(data['gripx'][idx],data['gripz'][idx],marker='o',color='black')
-    ax.scatter(0,1,marker='x',s=4)
+    ax.scatter(0,obj_height,marker='x',s=4)
     for i in idx:
         ax.arrow(data['x'][i],data['z'][i],data['gripx'][i]-data['x'][i],data['gripz'][i]-data['z'][i],color='black')
         ax.arrow(   data['x'][i] - length*np.cos(data['u1_opt'])[i],
                 data['z'][i] - length*np.sin(data['u1_opt'])[i],
                 2*length*np.cos(data['u1_opt'])[i],
                 2*length*np.sin(data['u1_opt'])[i],color='blue',width=0.03)
-
-
-    #line.set_ydata(f(t, height_slider.val, speed_slider.val))
-    #ax.texts.remove(arrow)
-    ax.arrow(-2-speed_to_arrow_length(speed_slider.val),height_slider.val,speed_to_arrow_length(speed_slider.val),0,color='red',width=0.01)
+    ax.arrow(-grip_length_m-speed_to_arrow_length(speed_slider.val),height_slider.val,speed_to_arrow_length(speed_slider.val),0,color='red',width=0.01)
     fig.canvas.draw_idle()
 
 

@@ -1,3 +1,5 @@
+#include <boost/asio.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -36,9 +38,9 @@ const double p2_lat = 47.42472872408145;
 // way point after pickup (mission dependent)
 const double obj_long = 8.3873573;
 const double obj_lat = 47.4246895;
-const double obj_alt = 1.0;
+const double ground_alt = 389.2;
 
-const double grasp_length = 2; // length from beginning of MPC control to object
+const double grasp_length = 5; // length from beginning of MPC control to object
                                // (or from object to end of MPC control)
 
 // normalized vector from p1 to p2
@@ -52,7 +54,7 @@ const double yaw_P = 1.0;
 const double yaw_I = 0.2;
 
 // Variables that have to be exactly the same as in traj_gen.cpp:
-const double time_horizon = 0.7;
+const double time_horizon = 1.0;
 const double dt = 0.02;
 const int iterations = int(time_horizon / dt);
 
@@ -60,34 +62,105 @@ const int iterations = int(time_horizon / dt);
 const double R = 6378137; // earths Radius in [m]
 const int n_initial_conditions = 6;
 const int n_ctrl_vars = 3;
-const int n_z = 13;  // number of possible initial conditions for x
-const int n_vx = 14; // number of possible initial conditions for vs
+const int n_z = 9;  // number of possible initial conditions for x
+const int n_vx = 9; // number of possible initial conditions for vs
 const std::vector<double> vx0 =
     std::vector<double>(n_vx); // values of possible initial conditions
 const std::vector<double> x0 =
     std::vector<double>(n_z); // values of possible initial conditions
 
-// values that are accessed by multiple threads and need to be guarded by mutex
-std::vector<double> initial_condition(n_initial_conditions);
-
 std::vector<std::vector<std::vector<std::vector<double>>>>
     u_opt(n_z, std::vector<std::vector<std::vector<double>>>(
                    n_vx, std::vector<std::vector<double>>(
                              n_ctrl_vars, std::vector<double>(iterations))));
-std::vector<double> possible_z{0.7,  0.75, 0.8,  0.85, 0.9,  0.95, 1.0,
-                               1.05, 1.1,  1.15, 1.2,  1.25, 1.3};
-std::vector<double> possible_vx{9,     9.25, 9.5,   9.75, 10.0,  10.25, 10.5,
-                                10.75, 11.0, 11.25, 11.5, 11.75, 12.0,  12.25};
-// helper function from gps coordinates to meters
+
+std::vector<double> possible_z{1.3, 1.35, 1.4, 1.45, 1.5, 1.55, 1.6, 1.65, 1.7};
+std::vector<double> possible_vx{10,    10.25, 10.5,  10.75, 11.0,
+                                11.25, 11.5,  11.75, 12.0};
+
+/// @brief struct for cooridnates in the pick-up plane
+/// @param x x coordinate
+/// @param z z coordinate
+/// @param vx x-velocity
+/// @param vz z-velocity
+struct coordinates {
+  double x;
+  double z;
+  double vx;
+  double vz;
+};
+
+/// @brief calculates a distance in meters from gps degrees
+/// @param deg gps latitude or longitude
+/// @return meters
 double deg_to_m(double deg) {
   double R = 6378000.137; // Radius of earth in m
   return M_PI * R * deg / 180;
 }
 
-void get_coords(Telemetry &telemetry, double &x, double &z, double &vx,
-                double &xz) {}
+/// @brief Finds index of possible_vx vector whose value closest corresponds
+/// to the input argument
+/// @param speed speed of the plane
+/// @return index in possible_vx vector
+int find_vx_id(double speed) {
+  double min_vx = 1000;
+  int min_vx_id = 0;
+  for (int i = 0; i < n_vx; i++) {
+    if (std::abs(speed - possible_vx.at(i)) < min_vx) {
+      min_vx = std::abs(speed - possible_vx.at(i));
+      min_vx_id = i;
+    }
+  }
+  return min_vx_id;
+}
+
+/// @brief Finds index of possible_z vector whose value closest corresponds
+/// to the input argument
+/// @param speed altitude of the plane
+/// @return index in possible_z vector
+int find_z_id(double alt) {
+  double min_z = 1000;
+  int min_z_id = 0;
+  for (int i = 0; i < n_z; i++) {
+    if (std::abs(alt - possible_z.at(i)) < min_z) {
+      min_z = std::abs(alt - possible_z.at(i));
+      min_z_id = i;
+    }
+  }
+  return min_z_id;
+}
+
+int find_closest_id(std::vector<double> vec, double val) {
+  double val_min = 1000;
+  int val_min_id = 0;
+  for (int i = 0; i < vec.size(); i++) {
+    if (std::abs(val - vec.at(i)) < val_min) {
+      val_min = std::abs(val - vec.at(i));
+      val_min_id = i;
+    }
+  }
+  return val_min_id;
+}
+
+/// @brief This functions transforms global gps coordinates (provided by
+/// mavsdk telemetry plugin) to coordinates realtive to the object in the
+/// pickup plane
+/// @param telemetry mavsdk telemetry plugin
+/// @return a coords struct with the values x,z,vx and vz
+coordinates get_coords(Telemetry &telemetry) {
+  double pos_long = telemetry.position().longitude_deg - obj_long;
+  double pos_lat = telemetry.position().latitude_deg - obj_lat;
+  coordinates coords;
+  coords.x = deg_to_m(pos_long * dir_long + pos_lat * dir_lat);
+  coords.z = telemetry.position().absolute_altitude_m - ground_alt;
+  coords.vx = telemetry.velocity_ned().north_m_s * dir_lat +
+              telemetry.velocity_ned().east_m_s * dir_long;
+  coords.vz = -telemetry.velocity_ned().down_m_s;
+  return coords;
+}
 
 int main(int argc, char **argv) {
+
   /* READ OPTIMAL CONTROLS FROM PRECALCULATED FILE*/
   std::ifstream reader;
   reader.open("apps/app_grasper/src/u_opt.csv");
@@ -104,10 +177,12 @@ int main(int argc, char **argv) {
   for (int z = 0; z < n_z; z++) {
     for (int vx = 0; vx < n_vx; vx++) {
       for (int i = 0; i < iterations; i++) {
-        // std::cout << "[" << z << "," << vx << "," << i << "]" << std::endl;
+        // std::cout << "[" << z << "," << vx << "," << i << "]" <<
+        // std::endl;
 
-        std::cout << "[" << possible_z.at(z) << ", " << possible_vx.at(vx)
-                  << ", " << i << "]" << std::endl;
+        // std::cout << "[" << possible_z.at(z) << ", " <<
+        // possible_vx.at(vx)
+        //           << ", " << i << "]" << std::endl;
         std::getline(reader, line);
         // std::cout << line << std::endl;
 
@@ -124,6 +199,12 @@ int main(int argc, char **argv) {
     }
   }
   std::cout << "[SUCCESS] read in all values" << std::endl;
+
+  /* INITIALIZE LOGGING */
+  std::ofstream file;
+  std::string path = "apps/app_grasper/log/grasp1.csv";
+  file.open(path);
+  file << "u0_opt,u1_opt,u2_opt,x,z,vx,vz,pitch\n";
 
   /* INITIALIZE MAVSDK */
   if (argc != 2) {
@@ -151,14 +232,6 @@ int main(int argc, char **argv) {
   MissionRaw missionRaw = MissionRaw{system};
   std::cout << "[SUCCESS] System is ready\n";
 
-  // first initial condition = entry into offboard-zone
-  initial_condition.at(0) = -10.0; // x-position
-  initial_condition.at(1) = 2.0;   // z-position
-  initial_condition.at(2) = 10.0;  // vx-velocity
-  initial_condition.at(3) = 0.0;   // vz-velocity
-  initial_condition.at(4) = 0.0; // pitch angle (evt need to change that value)
-  initial_condition.at(5) = 0.0; // arm angle
-
   /* START MISSION AND WAIT FOR OFFBOARD ACTIVATION */
   action.arm();
   std::this_thread::sleep_for(
@@ -175,42 +248,10 @@ int main(int argc, char **argv) {
   }
   std::cout << "takeoff complete, Now watiting for MPC action!" << std::endl;
 
-  std::vector<double> dir(2);
-  dir.at(0) = deg_to_m(p2_long - p1_long);
-  dir.at(1) = deg_to_m(p2_lat - p1_lat);
-
-  double len_sq = dir.at(0) * dir.at(0) + dir.at(1) * dir.at(1);
-
-  while (true) {
-
-    // delay
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-
-    // current position
-    std::vector<double> pos(2);
-    pos.at(0) = deg_to_m(telemetry.position().longitude_deg - p1_long);
-    pos.at(1) = deg_to_m(telemetry.position().latitude_deg - p1_lat);
-
-    // progress along mission route
-    double prog = (pos.at(0) * dir.at(0) + pos.at(1) * dir.at(1)) / len_sq;
-
-    // deviation
-    std::vector<double> abw(2);
-    abw.at(0) = pos.at(0) - prog * dir.at(0);
-    abw.at(1) = pos.at(1) - prog * dir.at(1);
-    double lat_err = std::sqrt(abw.at(0) * abw.at(0) + abw.at(1) * abw.at(1));
-
-    // check if offboard should begin
-    // std::cout << prog << std::endl;
-    if (lat_err < 1 && lat_err > -1 && prog < 1 && prog > 0) {
-      break;
-    }
+  // wait until we are sufficiently close to the object
+  while (get_coords(telemetry).x < -grasp_length) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
-
-  std::ofstream file;
-  std::string path = "apps/app_mpc_plane/log/log.csv";
-  file.open(path);
-  file << "u0_opt,u1_opt,u2_opt,x,z,vx,vz,pitch\n";
 
   double yaw = telemetry.attitude_euler().yaw_deg;
   std::cout << "starting offboard" << std::endl;
@@ -227,13 +268,21 @@ int main(int argc, char **argv) {
   offboard.start();
 
   // TODO: determine initial conditions.
+  coordinates coords = get_coords(telemetry);
+  int vx_idx = find_vx_id(coords.vx);
+  int z_idx = find_z_id(coords.z);
 
-  int vx_idx = 3;
-  int z_idx = 2;
+  std::cout << "Actual Coords: [" << coords.z << ", " << coords.vx << "]"
+            << "\n x0 coords: [" << possible_z.at(z_idx) << ", "
+            << possible_vx.at(vx_idx) << "]" << std::endl;
 
   double gripper_angle;
 
-  for (int i = 0; time_horizon; i++) {
+  boost::asio::io_service io;
+
+  for (int i = 0; i < iterations; i++) {
+    boost::asio::deadline_timer t(
+        io, boost::posix_time::milliseconds(int(1000 * dt)));
 
     // CONTROL INPUTS HERE
     Offboard::Attitude msg;
@@ -241,34 +290,29 @@ int main(int argc, char **argv) {
     msg.pitch_deg = u_opt.at(z_idx).at(vx_idx).at(1).at(i) * (180 / M_PI);
     msg.thrust_value = u_opt.at(z_idx).at(vx_idx).at(0).at(i);
     gripper_angle = u_opt.at(z_idx).at(vx_idx).at(2).at(i);
-    // std::cout << "control: " << msg.pitch_deg << " , " << msg.thrust_value
-    //           << " , " << gripper_angle << std::endl;
+    std::cout << "control: " << msg.pitch_deg << " , " << msg.thrust_value
+              << " , " << gripper_angle << std::endl;
 
     offboard.set_attitude(msg); // send offboard msg
 
-    /* SEND GRIPPER ANGLE TO ARDUINO */
+    /* TODO SEND GRIPPER ANGLE TO ARDUINO */
 
-    // // logging (u0,u1,u2,x,z,vx,vz)
-    double pos_long = telemetry.position().longitude_deg - obj_long;
-    double pos_lat = telemetry.position().latitude_deg - obj_lat;
-    double x = deg_to_m(pos_long * dir_long + pos_lat * dir_lat);
-    double vx = telemetry.velocity_ned().north_m_s * dir_lat +
-                telemetry.velocity_ned().east_m_s * dir_long;
-
-    // log << u_opt.at(z_idx).at(vx_idx).at(0).at(i);
-    // << "," << u_opt.at(z_idx).at(vx_idx).at(1).at(i) << "," << gripper_angle
-    // << "," << x << "," << telemetry.position().relative_altitude_m << "," <<
-    // vx
-    // << "," << -telemetry.velocity_ned().down_m_s << ","
-    // << telemetry.attitude_euler().pitch_deg * M_PI / 180 << "\n";
+    // logging (u0,u1,u2,x,z,vx,vz)
+    coordinates coords = get_coords(telemetry);
+    file << u_opt.at(z_idx).at(vx_idx).at(0).at(i) << ","
+         << u_opt.at(z_idx).at(vx_idx).at(1).at(i) << "," << gripper_angle
+         << "," << coords.x << "," << coords.z << "," << coords.vx << ","
+         << coords.vz << ","
+         << telemetry.attitude_euler().pitch_deg * M_PI / 180 << "\n";
 
     // after the grasp is over-> we leave the control loop and continue the
     // normal flight
-    if (x > 2) {
+    if (coords.x > 3.0) {
       break;
     }
-    // sleep
-    std::this_thread::sleep_for(std::chrono::milliseconds(int(1000 * dt)));
+    // sleep for dt
+    t.wait();
+    // std::this_thread::sleep_for(std::chrono::milliseconds(int(1000 * dt)));
   }
 
   std::cout << "Finished MPC -> continuing mission" << std::endl;

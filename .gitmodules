@@ -1,0 +1,3 @@
+[submodule "lib/vicon"]
+	path = lib/vicon
+	url = https://github.com/sarath-menon/vicon_datastream.git

@@ -18,7 +18,7 @@ data = pd.read_csv(dirname +"/"+ file_name+".csv")
 rho = 1.225
 A_tot = 1
 pitch_offset=0.05984281113
-thrust = 8.54858 * 10**(-6) * (3500 * data['throttle']*100)**2 
+thrust = (8.54858 * 10**(-6) * (3500 * data['throttle']*100)**2 ) * (1-data['vel']/25)
 mass = 1.5
 
 F_x = thrust * np.cos(data['pitch']*np.pi/180+pitch_offset)

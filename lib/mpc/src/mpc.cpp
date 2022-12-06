@@ -26,14 +26,16 @@ MX Model::drag(MX aoA_rad, MX airspeed_squared) {
                  0.5 * Model::A_tot * Model::rho * airspeed_squared *
                      0.04909224,
                  0.5 * Model::A_tot * Model::rho * airspeed_squared *
-                     (11.15770262 * pow(aoA_rad, 2) + 0.04909224));
+                     (12.10066432 * aoA_rad * aoA_rad + 0.02392831));
 }
 MX Model::lift(MX aoA_rad, MX airspeed_squared) {
   return if_else(aoA_rad < 0, 0,
                  0.5 * Model::A_tot * Model::rho * airspeed_squared *
-                     (5.60839272 * aoA_rad + 0.07145111));
+                     (5.63145487 * aoA_rad + 0.0714831));
 }
-MX Model::thrust(MX u_throttle) { return 104.72 * u_throttle * u_throttle; }
+MX Model::thrust(MX u_throttle, MX airspeed) {
+  return 104.72 * u_throttle * u_throttle * (1 - airspeed / 25);
+}
 
 void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
                                 casadi::DM &x0, casadi::MX &x_ref, double time,
@@ -50,19 +52,20 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
   casadi::MX obj_pos = x_ref(Slice(4, 6), 0);
 
   // input constraints
-  const double u0_MAX = 1;                 // [ - ] max throttle cmd
-  const double u0_MIN = 0;                 // [ - ] min throttle cmd
-  const double u1_MAX = 30 * M_PI / 180;   // [ rad ] max pitch
-  const double u1_MIN = -30 * M_PI / 180;  // [ rad ] min pitch
-  const double delta_u1 = 10 * M_PI / 180; // max pitch change per timestep
+  const double u0_MAX = 0.5;              // [ - ] max throttle cmd
+  const double u0_MIN = 0;                // [ - ] min throttle cmd
+  const double u1_MAX = 30 * M_PI / 180;  // [ rad ] max pitch
+  const double u1_MIN = -30 * M_PI / 180; // [ rad ] min pitch
+  const double delta_u1 =
+      0.2 * M_PI / 180; // max pitch change per timestep (was 10 before)
   const double u2_MIN = 20 * M_PI / 180;
   const double u2_MAX = 140 * M_PI / 180;
-  const double delta_u2 = 30 * M_PI / 180; // max arm angle change per timestep
+  const double delta_u2 = 15 * M_PI / 180; // max arm angle change per timestep
 
-  const double aoA_MAX = 20 * M_PI / 180;  // [ rad ] max angle of attack
-  const double aoA_MIN = -20 * M_PI / 180; // [ rad ] min angle of attack
+  const double aoA_MAX = 4 * M_PI / 180; // [ rad ] max angle of attack
+  const double aoA_MIN = 0 * M_PI / 180; // [ rad ] min angle of attack
 
-  const double V_ABS_MAX = 10;               // [ m/s ] max speed
+  const double V_ABS_MAX = 20;               // [ m/s ] max speed
   const double V_ABS_MIN = 6;                // [ m/s ] min speed
   const double V_ARG_MAX = 30 * M_PI / 180;  // [ m/s ] max speed
   const double V_ARG_MIN = -30 * M_PI / 180; // [ m/s ] min speed
@@ -83,7 +86,11 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
   MX u = opti.variable(3, horizon);            // thurst, alpha and grip angle
   MX angleOfAttack = opti.variable(1, horizon + 1); // angle of attack
   MX gripper_pos = opti.variable(2, horizon + 1);   // gripper position
-  //    cost function
+  MX lift = opti.variable(1, horizon + 1);
+  MX drag = opti.variable(1, horizon + 1);
+  MX thrust = opti.variable(1, horizon + 1);
+
+  // cost function (TODO does not alway converge -> correct tomorrow)
   MX J = 0;
   gripper_pos(0, 0) = pos(0, 0) + Model::arm_length * cos(u(1, 0) - u(2, 0));
   gripper_pos(1, 0) = pos(1, 0) + Model::arm_length * sin(u(1, 0) - u(2, 0));
@@ -96,13 +103,30 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
     gripper_pos(1, i) = pos(1, i) + Model::arm_length * sin(u(1, i) - u(2, i));
     MX gripper_speed =
         (gripper_pos(Slice(), i) - gripper_pos(Slice(), i - 1)) / dt;
-    MX J_pre = sumsqr(pos(Slice(), i) - obj_pos);
+    // MX J_pre = sumsqr(pos(Slice(), i) - obj_pos);
     MX J_grip = i * i *
-                (200 * sumsqr(gripper_pos(Slice(), i) - obj_pos) +
+                ((100 * sumsqr(gripper_pos(Slice(), i) - obj_pos)) +
                  sumsqr(gripper_speed));
+    // MX J_grip = i * i *
+    //             ((200 * (gripper_pos(1, i) - obj_pos(1)) *
+    //               (gripper_pos(1, i) - obj_pos(1))) +
+    //              sumsqr(gripper_speed));
+    // NOT BAD
+    // MX J_grip = i * i *
+    //             ((60 * (gripper_pos(0, i) - obj_pos(0)) *
+    //               (gripper_pos(0, i) - obj_pos(0))) +
+    //              (600 * (gripper_pos(1, i) - obj_pos(1)) *
+    //               (gripper_pos(1, i) - obj_pos(1))) +
+    //              sumsqr(gripper_speed));
+
+    // MX J_grip = i * i * sumsqr(gripper_pos(Slice(), i) - obj_pos);
+
     MX J_post = sumsqr(pos(Slice(), i) - pos_ref);
-    J += if_else(gripper_pos(0, i) < obj_pos(0) - 1, J_pre,
-                 if_else(gripper_pos(0, i) < obj_pos(0) + 0.2, J_grip, J_post));
+    // J += if_else(gripper_pos(0, i) < obj_pos(0) - 1, J_pre,
+    //              if_else(gripper_pos(0, i) < obj_pos(0) + 0.2, J_grip,
+    //              J_post));
+    J += if_else(gripper_pos(0, i) < obj_pos(0) + Model::arm_length, J_grip,
+                 J_post);
   }
 
   opti.minimize(J);
@@ -110,35 +134,51 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
   // system dynamics
   for (int i = 1; i <= horizon; ++i) {
     // calculate angle of attack
-    angleOfAttack(0, i - 1) = u(1, i - 1) - vel_pol(1, i - 1);
+    opti.subject_to(angleOfAttack(0, i - 1) == u(1, i - 1) - vel_pol(1, i - 1));
 
     //  calculate lift, drag and thrust
-    MX lift = Model::lift(angleOfAttack(0, i - 1),
-                          vel_pol(0, i - 1) * vel_pol(0, i - 1));
-    MX drag = Model::drag(angleOfAttack(0, i - 1),
-                          vel_pol(0, i - 1) * vel_pol(0, i - 1));
-    MX thrust = Model::thrust(u(0, i - 1));
+    opti.subject_to(lift(0, i - 1) ==
+                    Model::lift(angleOfAttack(0, i - 1),
+                                vel_pol(0, i - 1) * vel_pol(0, i - 1)));
 
-    // calculate acceleration on plane
-    MX a = MX::zeros(2, 1);
-    a(0) = (thrust * cos(u(1, i - 1)) - drag) / Model::mass;
-    a(1) = (thrust * sin(u(1, i - 1)) + lift - g) / Model::mass;
+    opti.subject_to(drag(0, i - 1) ==
+                    Model::drag(angleOfAttack(0, i - 1),
+                                vel_pol(0, i - 1) * vel_pol(0, i - 1)));
 
-    vel_cart(0, i - 1) = vel_pol(0, i - 1) * cos(vel_pol(1, i - 1));
-    vel_cart(1, i - 1) = vel_pol(0, i - 1) * sin(vel_pol(1, i - 1));
+    opti.subject_to(thrust(0, i - 1) ==
+                    Model::thrust(u(0, i - 1), vel_pol(0, i - 1)));
+
+    // polar cartesian
+    opti.subject_to(vel_cart(0, i - 1) ==
+                    vel_pol(0, i - 1) * cos(vel_pol(1, i - 1)));
+    opti.subject_to(vel_cart(1, i - 1) ==
+                    vel_pol(0, i - 1) * sin(vel_pol(1, i - 1)));
 
     //  position update
-    opti.subject_to(pos(Slice(), i) ==
-                    pos(Slice(), i - 1) + dt * vel_cart(Slice(), i - 1));
+    opti.subject_to(pos(0, i) == pos(0, i - 1) + dt * vel_cart(0, i - 1));
+    opti.subject_to(pos(1, i) == pos(1, i - 1) + dt * vel_cart(1, i - 1));
     // velocity update
-    opti.subject_to(vel_cart(Slice(), i) == vel_cart(Slice(), i - 1) + dt * a);
+    opti.subject_to(
+        vel_cart(0, i) ==
+        vel_cart(0, i - 1) -
+            dt * (thrust(0, i - 1) * cos(u(1, i - 1)) - drag(0, i - 1)) /
+                Model::mass);
+    opti.subject_to(
+        vel_cart(1, i) ==
+        vel_cart(1, i - 1) +
+            dt * ((thrust(0, i - 1) * sin(u(1, i - 1)) + lift(0, i - 1)) /
+                      Model::mass -
+                  g));
   }
   // constraints
   for (int i = 0; i < horizon; ++i) {
     // inputs
-    opti.subject_to(opti.bounded(u0_MIN, u(0, i), u0_MAX));
-    opti.subject_to(opti.bounded(u1_MIN, u(1, i), u1_MAX));
-    // opti.subject_to(opti.bounded(u2_MIN, u(2, i), u2_MAX));
+    opti.subject_to(u(0, i) < u0_MAX);
+    opti.subject_to(u(0, i) > u0_MIN);
+
+    opti.subject_to(u(1, i) < u1_MAX);
+    opti.subject_to(u(1, i) > u1_MIN);
+
     opti.subject_to(u(2, i) < u2_MAX);
     opti.subject_to(u(2, i) > u2_MIN);
 
@@ -170,13 +210,14 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
   ////////////////////////////////////////////////////////////////////// solving
   // suppress ipopt console output?
   Dict opts_dict = Dict();
+  opts_dict["ipopt.max_iter"] = 100000;
   if (debug_level < 3) {
     opts_dict["ipopt.print_level"] = 0;
     opts_dict["ipopt.sb"] = "yes";
     opts_dict["print_time"] = 0;
     opti.solver("ipopt", opts_dict);
   } else {
-    opti.solver("ipopt");
+    opti.solver("ipopt", opts_dict);
   }
 
   // solve

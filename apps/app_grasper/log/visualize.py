@@ -23,6 +23,7 @@ ax.scatter(grip_x,grip_z,marker='o',color='black')
 for i in range(0,len(data['x'])):
     #ax.arrow(data['x'][i],data['z'][i],data['gripx'][i]-data['x'][i],data['gripz'][i]-data['z'][i],color='black')
     ax.arrow(data['x'][i],data['z'][i],grip_x[i]-data['x'][i],grip_z[i]-data['z'][i],color='black')
+    
     ax.arrow(   data['x'][i] - length*np.cos(data['u1_opt'])[i],
                 data['z'][i] - length*np.sin(data['u1_opt'])[i],
                 2*length*np.cos(data['u1_opt'])[i],

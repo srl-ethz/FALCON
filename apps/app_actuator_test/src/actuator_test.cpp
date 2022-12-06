@@ -70,45 +70,45 @@ int main(int argc, char **argv) {
 
   //   std::this_thread::sleep_for(milliseconds(500));
   // }
-  MavlinkPassthrough::CommandLong cmd;
-  cmd.command = MAV_CMD_DO_SET_SERVO;
-  cmd.target_sysid = mavlink.get_target_sysid();
-  cmd.target_compid = mavlink.get_target_compid();
-  cmd.param1 = 7;
+  // MavlinkPassthrough::CommandLong cmd;
+  // cmd.command = MAV_CMD_DO_SET_SERVO;
+  // cmd.target_sysid = mavlink.get_target_sysid();
+  // cmd.target_compid = mavlink.get_target_compid();
+  // cmd.param1 = 7;
 
-  for (int u = 1000; u <= 2000; u++) {
+  // for (int u = 1000; u <= 2000; u++) {
 
-    cmd.param2 = u;
-    mavlink.send_command_long(cmd);
-    std::this_thread::sleep_for(milliseconds(500));
-  }
-
-  // std::vector<float> grp;
-  // for (int i = 0; i < 8; i++) {
-  //   grp.push_back(0.5);
-  // }
-  // Offboard::ActuatorControl act_cmd{};
-  // Offboard::ActuatorControlGroup grp1{};
-  // Offboard::ActuatorControlGroup grp2{};
-  // grp1.controls = grp;
-  // grp2.controls = grp;
-  // act_cmd.groups.push_back(grp1);
-  // act_cmd.groups.push_back(grp2);
-
-  // std::this_thread::sleep_for(milliseconds(200));
-
-  // offboard.set_actuator_control(act_cmd);
-  // auto offboard_result = offboard.start();
-  // std::cout << offboard_result << std::endl;
-
-  // for (float u = -1; u <= 1; u += 0.1) {
-  //   act_cmd.groups.at(0).controls.at(0) = u;
-  //   // send thrust command
-  //   std::cout << "now setting input to = " << u << std::endl;
-
-  //   offboard.set_actuator_control(act_cmd);
+  //   cmd.param2 = u;
+  //   mavlink.send_command_long(cmd);
   //   std::this_thread::sleep_for(milliseconds(500));
   // }
+
+  std::vector<float> grp;
+  for (int i = 0; i < 8; i++) {
+    grp.push_back(0.5);
+  }
+  Offboard::ActuatorControl act_cmd{};
+  Offboard::ActuatorControlGroup grp1{};
+  Offboard::ActuatorControlGroup grp2{};
+  grp1.controls = grp;
+  grp2.controls = grp;
+  act_cmd.groups.push_back(grp1);
+  act_cmd.groups.push_back(grp2);
+
+  std::this_thread::sleep_for(milliseconds(200));
+
+  offboard.set_actuator_control(act_cmd);
+  auto offboard_result = offboard.start();
+  std::cout << offboard_result << std::endl;
+
+  for (float u = -1; u <= 1; u += 0.1) {
+    act_cmd.groups.at(0).controls.at(0) = u;
+    // send thrust command
+    std::cout << "now setting input to = " << u << std::endl;
+
+    offboard.set_actuator_control(act_cmd);
+    std::this_thread::sleep_for(milliseconds(500));
+  }
 
   // stop offboard
   // offboard_result = offboard.stop();
