@@ -174,10 +174,9 @@ int main(int argc, char **argv) {
   /* CREATE ROS2 service clients */
   rclcpp::Client<raptor_interface::srv::SetServo>::SharedPtr
       client_set_gripper = node->create_client<raptor_interface::srv::SetServo>(
-          "TODO: gripper service name");
+          "gripper_service_name");
   rclcpp::Client<raptor_interface::srv::SetServo>::SharedPtr client_set_arm =
-      node->create_client<raptor_interface::srv::SetServo>(
-          "TODO: arm service name");
+      node->create_client<raptor_interface::srv::SetServo>("arm_service_name");
 
   /* READ OPTIMAL CONTROLS FROM PRECALCULATED FILE*/
   std::ifstream reader;
