@@ -6,11 +6,11 @@ TODO: installation procedure
 ### Build Parameters
 The following build parameters can be modified in the top most CMakeLists.txt. If you don't want to build all the libraries that are only required in some of the apps in this repo, you can set these to ```OFF``` instead of ```ON```. This is also handy when deploying the code on a raspberry were not all dependencies are installed (e.g. ROS2).
 ```
-ROS2_BUILD
+ROS2_BUILD ON / OFF
 
-CASADI_BUILD
+CASADI_BUILD ON / OFF
 
-VICON_BUILD
+VICON_BUILD ON / OFF
 ```
 
 ## Description of all the apps
