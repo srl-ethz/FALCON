@@ -1,2 +1,6 @@
-add_subdirectory(mpc)
-add_subdirectory(vicon)
+if(CASADI_BUILD)
+    add_subdirectory(mpc)
+endif()
+if(VICON_BUILD)
+    add_subdirectory(vicon)
+endif()

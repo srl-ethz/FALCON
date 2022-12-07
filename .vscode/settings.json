@@ -77,5 +77,10 @@
         "shared_mutex": "cpp",
         "span": "cpp",
         "variant": "cpp"
+    },
+    "colcon.provideTasks": true,
+    "colcon.rosInstallPath.linux": "/opt/ros/humble/",
+    "colcon.defaultEnvironment": { "humble hawksbill"
+    
     }
 }
