@@ -230,7 +230,8 @@ int main(int argc, char **argv) {
   }
 
   Mavsdk mavsdk;
-  ConnectionResult connection_result = mavsdk.add_any_connection(argv[1]);
+  ConnectionResult connection_result =
+      mavsdk.add_any_connection("udp://:14540");
 
   if (connection_result != ConnectionResult::Success) {
     std::cerr << "Connection failed: " << connection_result << '\n';
@@ -313,6 +314,9 @@ int main(int argc, char **argv) {
     offboard.set_attitude(msg); // send offboard msg
 
     /* TODO SEND GRIPPER ANGLE TO ARDUINO */
+    auto request = std::make_shared<raptor_interface::srv::SetServo::Request>();
+    request->angle = u_opt.at(z_idx).at(vx_idx).at(2).at(i);
+    auto response = client_set_arm->async_send_request(request);
 
     // logging (u0,u1,u2,x,z,vx,vz)
     coordinates coords = get_coords(telemetry);
