@@ -14,7 +14,6 @@ set(CASADI_BUILD ON)
 set(VICON_BUILD ON)
 
 ############ FIND DEPENDENCIES
-
 find_package(MAVSDK REQUIRED)
 if(CASASADI_BUILD)
     find_package(casadi REQUIRED)

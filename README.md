@@ -1,6 +1,7 @@
 # FALCON: Fixed-Wing Aerial Lifting and Carying of Objects inspired by Nature 
 Repository with all the code that was written and used in in the FALCON project.
 
+
 ## Installation
 TODO: installation procedure
 ### Build Parameters
@@ -112,4 +113,17 @@ This python script visualizes the MPC libs trajectories visually.
 This python script calculates waypoints in a straight line. We can enter the object's coordinates, a desired grasp-length and direction and it gives us the coordinate were we enter the grasp and where we exit it.
 
 ## Simulation
-TODO: write how to set up simulation.
+To use the gazebo simulation, install the repo under the following link according to the instuctions: https://github.com/aurelappius/PX4-Autopilot
+
+The instructions there are made for the RAPTOR simulation, so we need to adjust the final command to launch a different simulation.
+
+replace: 
+```
+make px4_sitl gazebo_raptor__baylands
+```
+with:
+```
+make px4_sitl gazebo_falcon
+```
+
+In combination with the app graps sim, the fixed wing pick-up will take place in the gazebo simulation. Have fun :-)
