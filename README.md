@@ -23,6 +23,35 @@ Command line arguments:
 ./build/apps/app_grasper/grasper serial:///dev/ttyUSB0 /dev/ttyACM0
 ```
 
+### Grasper sim
+This code does the same as ```Grasper``` but it publishes the gripper with a ROS2 service that is provided by the simulator. To build and run this package, you have to use colcon and also need an installation of ROS2 humble hawksbill. You also need the ```raptor_interface``` ROS2 package installed in another directory. You can install it by cloneing the following repo: https://github.com/raptor-ethz/raptor.git 
+
+Afterwards you have to do the following steps:
+
+1) Source your workspace
+```
+source /opt/ros/humble/setup.bash
+```
+2) Install the local_setup.bash file from the raptor package in your terminal.
+
+```
+. [path_to_raptor_package]/install/local_setup.bash
+```
+3) Set the Cmake parameter ROS2_BUILD to ON (it is in the top most CMakeLists.txt file)
+4) build the package
+```
+colcon build
+```
+5) install the package
+```
+. install/local_setup.bash
+```
+6) run the package with the following command:
+```
+ros2 run falcon grasper_sim
+```
+
+This will connect to a custom gazebo simulator that can be found here: https://github.com/aurelappius/PX4-Autopilot.git
 ### Gripper mocap test
 Runs on the onbaord raspberry pi. This app was designed to test the gripper. It uses the vicon-datastream kit to get position information from the vicon system.
 
