@@ -3,6 +3,15 @@ Repository with all the code that was written in the FALCON project.
 
 ## Installation
 TODO: installation procedure
+### Build Parameters
+The following build parameters can be modified in the top most CMakeLists.txt. If you don't want to build all the libraries that are only required in some of the apps in this repo, you can set these to ```OFF``` instead of ```ON```. This is also handy when deploying the code on a raspberry were not all dependencies are installed (e.g. ROS2).
+```
+ROS2_BUILD
+
+CASADI_BUILD
+
+VICON_BUILD
+```
 
 ## Description of all the apps
 The following list contains short descriptions of the apps in this repo. The command line examples assume that the flight controller is attached to the port: ``` /dev/ttyUSB0 ``` and the Arduino to the port ```/dev/ttyACM0 ```. 
