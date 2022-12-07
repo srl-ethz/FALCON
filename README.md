@@ -1,5 +1,5 @@
 # FALCON: Fixed-Wing Aerial Lifting and Carying of Objects inspired by Nature 
-Repository with all the code that was written in the FALCON project.
+Repository with all the code that was written and used in in the FALCON project.
 
 ## Installation
 TODO: installation procedure
