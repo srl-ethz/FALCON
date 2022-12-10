@@ -5,7 +5,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ############ PARAMETERS
 #only turn this ON if you have ROS2 installed and build with colcon
-set(ROS2_BUILD ON)
+set(ROS2_BUILD OFF)
+
+#only turn this ON if you have ROS2 installed and build with colcon
+set(OPENCV_BUILD ON)
 
 #turn this on if you are using casadi (traj gen)
 set(CASADI_BUILD ON)
@@ -31,6 +34,9 @@ if(ROS2_BUILD)
     find_package(raptor_interface REQUIRED)
 endif()
 
+if(OPENCV_BUILD)
+    find_package( OpenCV REQUIRED )
+endif()
 
 add_subdirectory(apps)
 #add_subdirectory(external)

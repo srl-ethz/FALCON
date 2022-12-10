@@ -5,6 +5,10 @@ add_subdirectory(app_gripper_test)
 add_subdirectory(app_multithread_test)
 add_subdirectory(app_grasper)
 
+if(OPENCV_BUILD)
+    add_subdirectory(app_video_writer_test)
+endif()
+
 if(ROS2_BUILD)
     add_subdirectory(app_grasper_sim)
 endif()
