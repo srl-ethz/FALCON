@@ -94,6 +94,9 @@ This app tested the multithreading needed for an MPC where optimization and cont
 ### Trajectory generator (traj_gen)
 This app runs on a powerful ground station computer. This app computes optimal trajectories for the plane to fly for different initial conditions. We run this before we fly, and then copy the file "opt_ctrl_log.csv" to the grasper app. It will then read out the optimal control values calculated here when it starts its offboard control loop.
 
+### Trajectory generator (traj_gen)
+This app was used to test if the opencv video saver works or not. The video saver had to be used in the simulation.
+
 ## Description of all helper apps
 
 ### arduino_code/gripper
