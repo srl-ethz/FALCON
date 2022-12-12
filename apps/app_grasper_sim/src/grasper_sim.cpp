@@ -34,12 +34,12 @@ using std::this_thread::sleep_for;
 
 // TODO Put into YAML file (dont care for now)
 //   way point before pickup (mission dependent)
-const double p1_long = 8.387438115684935;
-const double p1_lat = 47.42465027591855;
+const double p1_long = 8.3874380;
+const double p1_lat = 47.4246895;
 
 // way point after pickup (mission dependent)
-const double p2_long = 8.387276484315064;
-const double p2_lat = 47.42472872408145;
+const double p2_long = 8.3872764;
+const double p2_lat = 47.4246895;
 
 // way point after pickup (mission dependent)
 const double obj_long = 8.3873573;
@@ -174,9 +174,9 @@ int main(int argc, char **argv) {
   /* CREATE ROS2 service clients */
   rclcpp::Client<raptor_interface::srv::SetServo>::SharedPtr
       client_set_gripper = node->create_client<raptor_interface::srv::SetServo>(
-          "gripper_service_name");
+          "gripperFinger_deg");
   rclcpp::Client<raptor_interface::srv::SetServo>::SharedPtr client_set_arm =
-      node->create_client<raptor_interface::srv::SetServo>("arm_service_name");
+      node->create_client<raptor_interface::srv::SetServo>("gripperArm_deg");
 
   /* READ OPTIMAL CONTROLS FROM PRECALCULATED FILE*/
   std::ifstream reader;
@@ -266,6 +266,17 @@ int main(int argc, char **argv) {
   }
   std::cout << "takeoff complete, Now watiting for MPC action!" << std::endl;
 
+  std::cout << "setting gripper to inital position" << std::endl;
+  auto armRequest =
+      std::make_shared<raptor_interface::srv::SetServo::Request>();
+  armRequest->angle = u_opt.at(0).at(0).at(2).at(0) * 180.0 / M_PI;
+  auto armResponse = client_set_arm->async_send_request(armRequest);
+
+  auto gripperRequest =
+      std::make_shared<raptor_interface::srv::SetServo::Request>();
+  gripperRequest->angle = 90.0;
+  auto gripperResponse = client_set_gripper->async_send_request(gripperRequest);
+
   // wait until we are sufficiently close to the object
   while (get_coords(telemetry).x < -grasp_length) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -305,9 +316,9 @@ int main(int argc, char **argv) {
     // CONTROL INPUTS HERE
     Offboard::Attitude msg;
     // set optimal control values
-    msg.pitch_deg = u_opt.at(z_idx).at(vx_idx).at(1).at(i) * (180 / M_PI);
+    msg.pitch_deg = u_opt.at(z_idx).at(vx_idx).at(1).at(i) * (180.0 / M_PI);
     msg.thrust_value = u_opt.at(z_idx).at(vx_idx).at(0).at(i);
-    gripper_angle = u_opt.at(z_idx).at(vx_idx).at(2).at(i);
+    gripper_angle = u_opt.at(z_idx).at(vx_idx).at(2).at(i) * (180.0 / M_PI);
     std::cout << "control: " << msg.pitch_deg << " , " << msg.thrust_value
               << " , " << gripper_angle << std::endl;
 
@@ -315,7 +326,7 @@ int main(int argc, char **argv) {
 
     /* TODO SEND GRIPPER ANGLE TO ARDUINO */
     auto request = std::make_shared<raptor_interface::srv::SetServo::Request>();
-    request->angle = u_opt.at(z_idx).at(vx_idx).at(2).at(i);
+    request->angle = u_opt.at(z_idx).at(vx_idx).at(2).at(i) * (180.0 / M_PI);
     auto response = client_set_arm->async_send_request(request);
 
     // logging (u0,u1,u2,x,z,vx,vz)
@@ -342,6 +353,8 @@ int main(int argc, char **argv) {
   std::cout << "continued mission -> MPC Program will now stop! "
                "Good Luck Landing that aircraft :)"
             << std::endl;
+
+  // TODO: set angle to landing config
   file.close();
   return 0;
 }

@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ############ PARAMETERS
 #only turn this ON if you have ROS2 installed and build with colcon
-set(ROS2_BUILD OFF)
+set(ROS2_BUILD ON)
 
 #only turn this ON if you have ROS2 installed and build with colcon
 set(OPENCV_BUILD ON)
