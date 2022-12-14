@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
   std::cout << "Started logging to log/"
             << "Flight_" << Date << ".csv" << std::endl;
 
-  myLog << "t,north,east,down,vel,roll,pitch,speed,throttle\n";
+  myLog << "t,north,east,down,vel,vel_dwn,roll,pitch,speed,throttle\n";
 
   /* INITIALIZE MAVSDK */
   if (argc != 2) {
@@ -59,12 +59,27 @@ int main(int argc, char **argv) {
   }
 
   auto telemetry = Telemetry{system}; // for telemetry services
+  auto offboard = Offboard{system};
   std::cout << "System is ready\n";
   double t_s = 1 / float(freq);
 
+  // start offboard
+  Offboard::VelocityNedYaw msg;
+  msg.east_m_s = 10;
+  msg.north_m_s = 0;
+  msg.down_m_s = 0;
+  offboard.set_velocity_ned(msg);
+  offboard.start();
+  std::this_thread::sleep_for(milliseconds(500));
+  std::cout << "started offboard" << std::endl;
   for (double t = 0;; t += t_s) {
     std::this_thread::sleep_for(milliseconds(int(1000 * t_s)));
-
+    Offboard::VelocityNedYaw msg;
+    msg.east_m_s = 9.0;
+    msg.north_m_s = 0;
+    msg.down_m_s = 0;
+    offboard.set_velocity_ned(msg);
+    std::cout << msg.east_m_s << std::endl;
     /* START LOGGING */
     double velocity_abs =
         std::sqrt(telemetry.position_velocity_ned().velocity.north_m_s *
@@ -75,16 +90,18 @@ int main(int argc, char **argv) {
     myLog << t << "," << telemetry.position_velocity_ned().position.north_m
           << "," << telemetry.position_velocity_ned().position.east_m << ","
           << telemetry.position_velocity_ned().position.down_m << ","
-          << velocity_abs << "," << telemetry.attitude_euler().roll_deg << ","
+          << velocity_abs << ","
+          << telemetry.position_velocity_ned().velocity.down_m_s << ","
+          << telemetry.attitude_euler().roll_deg << ","
           << telemetry.attitude_euler().pitch_deg << ","
           << telemetry.fixedwing_metrics().airspeed_m_s << ","
           << telemetry.fixedwing_metrics().throttle_percentage << "\n";
 
     //  ensure logging frequency
     std::this_thread::sleep_for(milliseconds(int(1000 / freq)));
-    std::cout << "logging time: [" << t << "]\t throttle: ["
-              << telemetry.fixedwing_metrics().throttle_percentage << "]"
-              << std::endl;
+    // std::cout << "logging time: [" << t << "]\t throttle: ["
+    //           << telemetry.fixedwing_metrics().throttle_percentage << "]"
+    //           << std::endl;
   }
 
   /* CLOSE LOG */

@@ -9,6 +9,9 @@ import sys
 dirname, fname = os.path.split(os.path.realpath(__file__))
 file_name = sys.argv[1]
 data = pd.read_csv(dirname +"/"+ file_name)
+data['z'] = data['z']-9.0 #shift down by 9m for better figure
+data['z0'] = data['z0']-9.0 #shift down by 9m for better figure
+data['gripz'] = data['gripz']-9.0 #shift down by 9m for better figure
 
 #gives back indices of the values that satisfy z0=z and vx0=vx
 def get_indices(z,vx):
@@ -20,30 +23,31 @@ def speed_to_arrow_length(speed):
 
 
 # Define initial parameters
-init_height = 1.5
-init_speed = 12.0
+init_height = 1.0
+init_speed = 9.0
 
 #Other Parameters
+horizon = 50 #time horizon of one traj
 length = 0.1 #length of plane arrow in plot
 grip_length_m = 5 #grip length before object
 grip_length_p = 2 #grip length behind object
-obj_height=1.5
+obj_height=1.0
 # Create the figure and the line that we will manipulate
 fig, ax = plt.subplots()
 #line, = ax.plot(t, f(t, init_height, init_speed))
 idx = get_indices(init_height,init_height)
-traj, = ax.plot(data['x'][idx],data['z'][idx])
+traj, = ax.plot(data['x'][idx],data['z'][idx],marker='x')
 ax.scatter(data['gripx'][idx],data['gripz'][idx],marker='o',color='black')
 for i in idx:
     ax.arrow(data['x'][i],data['z'][i],data['gripx'][i]-data['x'][i],data['gripz'][i]-data['z'][i],color='black')
-    ax.arrow(   data['x'][i] - length*np.cos(data['u1_opt'])[i],
-                data['z'][i] - length*np.sin(data['u1_opt'])[i],
-                2*length*np.cos(data['u1_opt'])[i],
-                2*length*np.sin(data['u1_opt'])[i],color='blue',width=0.03)
+    # ax.arrow(   data['x'][i] - length*np.cos(data['u1_opt'])[i],
+    #             data['z'][i] - length*np.sin(data['u1_opt'])[i],
+    #             2*length*np.cos(data['u1_opt'])[i],
+    #             2*length*np.sin(data['u1_opt'])[i],color='blue',width=0.03)
 
 
 arrow = ax.arrow(-grip_length_m-speed_to_arrow_length(init_speed),init_height,speed_to_arrow_length(init_speed),0,color='red',width=0.01)
-object = ax.scatter(0,obj_height,marker='x',s=6)
+object = ax.scatter(0,obj_height,marker='x',s=10)
 ax.set_xlabel('x [m]')
 ax.set_xlim(-grip_length_m-1,grip_length_p)
 ax.set_ylim(0,2.5)
@@ -56,9 +60,9 @@ aspeed = fig.add_axes([0.25, 0.1, 0.65, 0.03])
 speed_slider = Slider(
     ax=aspeed,
     label='Velocity',
-    valmin=10,
+    valmin=8.5,
     valstep=0.25,
-    valmax=12,
+    valmax=10.5,
     valinit=init_speed,
 )
 # Make a vertically oriented slider to control the height
@@ -66,9 +70,9 @@ axheight = fig.add_axes([0.1, 0.25, 0.0225, 0.63])
 height_slider = Slider(
     ax=axheight,
     label="Height",
-    valmin=1.3,
+    valmin=0.75,
     valstep=0.05,
-    valmax=1.7,
+    valmax=1.2,
     valinit=init_height,
     orientation="vertical"
 )
@@ -80,15 +84,16 @@ def update(val):
     ax.set_xlim(-grip_length_m-1,grip_length_p)
     ax.set_ylim(0,2.5)
     idx = get_indices(height_slider.val,speed_slider.val)
-    ax.plot(data['x'][idx],data['z'][idx])
+
+    ax.plot(data['x'][idx],data['z'][idx],marker='x')
     ax.scatter(data['gripx'][idx],data['gripz'][idx],marker='o',color='black')
-    ax.scatter(0,obj_height,marker='x',s=4)
+    ax.scatter(0,obj_height,marker='x',s=10)
     for i in idx:
         ax.arrow(data['x'][i],data['z'][i],data['gripx'][i]-data['x'][i],data['gripz'][i]-data['z'][i],color='black')
-        ax.arrow(   data['x'][i] - length*np.cos(data['u1_opt'])[i],
-                data['z'][i] - length*np.sin(data['u1_opt'])[i],
-                2*length*np.cos(data['u1_opt'])[i],
-                2*length*np.sin(data['u1_opt'])[i],color='blue',width=0.03)
+        # ax.arrow(   data['x'][i] - length*np.cos(data['u1_opt'])[i],
+        #         data['z'][i] - length*np.sin(data['u1_opt'])[i],
+        #         2*length*np.cos(data['u1_opt'])[i],
+        #         2*length*np.sin(data['u1_opt'])[i],color='blue',width=0.03)
     ax.arrow(-grip_length_m-speed_to_arrow_length(speed_slider.val),height_slider.val,speed_to_arrow_length(speed_slider.val),0,color='red',width=0.01)
     fig.canvas.draw_idle()
 

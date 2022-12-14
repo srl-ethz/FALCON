@@ -23,21 +23,21 @@ int main(int argc, char *argv[]) {
 
   // set initial state
   DM x0 = DM::zeros(n_initial_conditions, 1);
-  x0(0, 0) = -2;  // x
-  x0(1, 0) = 1;   // z
-  x0(2, 0) = 10;  // vx
-  x0(3, 0) = 0;   // vz
-  x0(4, 0) = 0.0; // alpha
-  x0(5, 0) = 0.0; // beta
+  x0(0, 0) = -5;                   // x
+  x0(1, 0) = 10;                   // z
+  x0(2, 0) = 10;                   // vx
+  x0(3, 0) = 0;                    // vz
+  x0(4, 0) = 0.026212279457713025; // initial pitch
+  x0(5, 0) = 30;                   // beta
 
   // set reference
   MX ref = MX(n_reference_vars, 1);
-  ref(0, 0) = 10;  // x_ref
-  ref(1, 0) = 2;   // z_ref
-  ref(2, 0) = 10;  // vx_ref
-  ref(3, 0) = 0;   // vz_ref
-  ref(4, 0) = 0;   // obj_x
-  ref(5, 0) = 1.5; // obj_z
+  ref(0, 0) = 5;  // x_ref
+  ref(1, 0) = 10; // z_ref
+  ref(2, 0) = 10; // vx_ref
+  ref(3, 0) = 0;  // vz_ref
+  ref(4, 0) = 0;  // obj_x
+  ref(5, 0) = 10; // obj_z
 
   std::string path_full_log =
       "apps/app_traj_gen/out/" + file_name + "_full_log.csv";
@@ -51,12 +51,12 @@ int main(int argc, char *argv[]) {
   // initialize ctrl log that only logs the inputs to the system
   std::ofstream ctrl_log;
   ctrl_log.open(path_ctrl_log);
-  ctrl_log << "u0_opt,u1_opt,u2_opt\n";
+  ctrl_log << "u0_opt,u1_opt,u2_opt,x,z,vel\n";
 
-  for (double z = 1.3; z < 1.75; z += 0.05) {
-    for (double vx = 10; vx < 12.1; vx += 0.25) {
-      // double z = 1.5;
-      // double vx = 11.5;
+  for (double z = 9.75; z < 10.25; z += 0.05) {
+    for (double vx = 8.5; vx < 10.6; vx += 0.25) {
+      // double z = 10.2;
+      // double vx = 10;
       std::cout << "NEW OPITIMZATION STARTED [z,vx]: [" << z << ", " << vx
                 << "]" << std::endl;
       x0(1, 0) = z;

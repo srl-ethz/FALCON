@@ -57,13 +57,13 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
   const double u1_MAX = 30 * M_PI / 180;  // [ rad ] max pitch
   const double u1_MIN = -30 * M_PI / 180; // [ rad ] min pitch
   const double delta_u1 =
-      0.2 * M_PI / 180; // max pitch change per timestep (was 10 before)
+      0.05 * M_PI / 180; // max pitch change per timestep (was 10 before)
   const double u2_MIN = 20 * M_PI / 180;
-  const double u2_MAX = 140 * M_PI / 180;
-  const double delta_u2 = 15 * M_PI / 180; // max arm angle change per timestep
+  const double u2_MAX = 180 * M_PI / 180;
+  const double delta_u2 = 25 * M_PI / 180; // max arm angle change per timestep
 
-  const double aoA_MAX = 4 * M_PI / 180; // [ rad ] max angle of attack
-  const double aoA_MIN = 0 * M_PI / 180; // [ rad ] min angle of attack
+  const double aoA_MAX = 6 * M_PI / 180;  // [ rad ] max angle of attack
+  const double aoA_MIN = -4 * M_PI / 180; // [ rad ] min angle of attack
 
   const double V_ABS_MAX = 20;               // [ m/s ] max speed
   const double V_ABS_MIN = 6;                // [ m/s ] min speed
@@ -101,12 +101,19 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
     // i + 1) - pos_ref); J += sumsqr(pos(Slice(), i + 1) - pos_ref);
     gripper_pos(0, i) = pos(0, i) + Model::arm_length * cos(u(1, i) - u(2, i));
     gripper_pos(1, i) = pos(1, i) + Model::arm_length * sin(u(1, i) - u(2, i));
-    MX gripper_speed =
-        (gripper_pos(Slice(), i) - gripper_pos(Slice(), i - 1)) / dt;
-    // MX J_pre = sumsqr(pos(Slice(), i) - obj_pos);
-    MX J_grip = i * i *
-                ((100 * sumsqr(gripper_pos(Slice(), i) - obj_pos)) +
-                 sumsqr(gripper_speed));
+
+    // WORKS:
+    // J += (sumsqr(gripper_pos(Slice(), i) - obj_pos)) *
+    //      (25 - pos(0, i) * pos(0, i));
+
+    // try:
+    MX J_grip = (sumsqr(gripper_pos(Slice(), i) - obj_pos)) *
+                (25 - pos(0, i) * pos(0, i));
+    MX J_post = sumsqr(pos(Slice(), i) - pos_ref) +
+                20 * sumsqr(u(2, i) - 140.0 * M_PI / 180);
+
+    J += if_else(pos(0, i) < obj_pos(0) + Model::arm_length, J_grip, J_post);
+
     // MX J_grip = i * i *
     //             ((200 * (gripper_pos(1, i) - obj_pos(1)) *
     //               (gripper_pos(1, i) - obj_pos(1))) +
@@ -121,12 +128,13 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
 
     // MX J_grip = i * i * sumsqr(gripper_pos(Slice(), i) - obj_pos);
 
-    MX J_post = sumsqr(pos(Slice(), i) - pos_ref);
-    // J += if_else(gripper_pos(0, i) < obj_pos(0) - 1, J_pre,
-    //              if_else(gripper_pos(0, i) < obj_pos(0) + 0.2, J_grip,
-    //              J_post));
-    J += if_else(gripper_pos(0, i) < obj_pos(0) + Model::arm_length, J_grip,
-                 J_post);
+    // MX J_post = sumsqr(pos(Slice(), i) - pos_ref);
+    //  J += if_else(gripper_pos(0, i) < obj_pos(0) - 1, J_pre,
+    //               if_else(gripper_pos(0, i) < obj_pos(0) + 0.2, J_grip,
+    //               J_post));
+    //  J += //if_else(gripper_pos(0, i) < obj_pos(0) + Model::arm_length,
+    //  J_grip,
+    //               J_post);
   }
 
   opti.minimize(J);
@@ -187,10 +195,6 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
       opti.subject_to(opti.bounded(-delta_u1, u(1, i) - u(1, i - 1), delta_u1));
       opti.subject_to(opti.bounded(-delta_u2, u(2, i) - u(2, i - 1), delta_u2));
     }
-
-    // no negative position
-    // opti.subject_to(gripper_pos(1, i + 1) > obj_pos(1));
-
     // angle of attack
     opti.subject_to(angleOfAttack(0, i + 1) > aoA_MIN);
     opti.subject_to(angleOfAttack(0, i + 1) < aoA_MAX);
@@ -247,9 +251,6 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
     full_log << sol_vec.at(0) << "," << sol_vec.at(1) << "," << sol_vec.at(2)
              << ",";
 
-    ctrl_log << sol_vec.at(0) << "," << sol_vec.at(1) << "," << sol_vec.at(2)
-             << "\n";
-
     // states (position)
     std::vector<double> pos_vec =
         DM::densify(sol.value(pos)(Slice(), i)).nonzeros();
@@ -273,5 +274,10 @@ void AttitudeMPC::doControlStep(std::vector<std::vector<double>> &u_opt,
         DM::densify(sol.value(angleOfAttack)(Slice(), i)).nonzeros();
     // double aoa = (180 / M_PI) * std::atan2(vel_vec.at(1), vel_vec.at(0));
     full_log << aoa_vec.at(0) << "\n";
+
+    // LOG FOR THE CONTROLLER
+    ctrl_log << sol_vec.at(0) << "," << sol_vec.at(1) << "," << sol_vec.at(2)
+             << "," << pos_vec.at(0) << "," << pos_vec.at(1) << ","
+             << vel_pol_vec.at(0) << "\n";
   }
 }

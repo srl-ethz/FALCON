@@ -7,14 +7,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #only turn this ON if you have ROS2 installed and build with colcon
 set(ROS2_BUILD ON)
 
-#only turn this ON if you have ROS2 installed and build with colcon
-set(OPENCV_BUILD ON)
+#only turn this ON if you are using openCV
+set(OPENCV_BUILD OFF)
 
 #turn this on if you are using casadi (traj gen)
 set(CASADI_BUILD ON)
 
 #turn this on if you are using vicon (gripper_mocap_test)
-set(VICON_BUILD ON)
+set(VICON_BUILD OFF)
 
 ############ FIND DEPENDENCIES
 find_package(MAVSDK REQUIRED)

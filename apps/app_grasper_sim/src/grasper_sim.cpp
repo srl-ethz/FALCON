@@ -32,6 +32,11 @@ using std::this_thread::sleep_for;
 // helpers
 #include "mavsdk_helper.h"
 
+namespace params {
+const double K_alt = 100.0;
+const double K_spd = 0.3;
+}; // namespace params
+
 // TODO Put into YAML file (dont care for now)
 //   way point before pickup (mission dependent)
 const double p1_long = 8.3874380;
@@ -67,9 +72,9 @@ const int iterations = int(time_horizon / dt);
 // other constants
 const double R = 6378137; // earths Radius in [m]
 const int n_initial_conditions = 6;
-const int n_ctrl_vars = 3;
-const int n_z = 9;  // number of possible initial conditions for x
-const int n_vx = 9; // number of possible initial conditions for vs
+const int n_ctrl_vars = 6; // u0, u1, u2, x, z, vel
+const int n_z = 10;        // number of possible initial conditions for x
+const int n_vx = 9;        // number of possible initial conditions for vs
 const std::vector<double> vx0 =
     std::vector<double>(n_vx); // values of possible initial conditions
 const std::vector<double> x0 =
@@ -80,9 +85,10 @@ std::vector<std::vector<std::vector<std::vector<double>>>>
                    n_vx, std::vector<std::vector<double>>(
                              n_ctrl_vars, std::vector<double>(iterations))));
 
-std::vector<double> possible_z{1.3, 1.35, 1.4, 1.45, 1.5, 1.55, 1.6, 1.65, 1.7};
-std::vector<double> possible_vx{10,    10.25, 10.5,  10.75, 11.0,
-                                11.25, 11.5,  11.75, 12.0};
+std::vector<double> possible_z{9.75,  9.80,  9.85,  9.90,  9.95,
+                               10.00, 10.05, 10.10, 10.15, 10.20};
+std::vector<double> possible_vx{8.5,  8.75, 9.0,   9.25, 9.5,
+                                9.75, 10.0, 10.25, 10.5};
 
 /// @brief struct for cooridnates in the pick-up plane
 /// @param x x coordinate
@@ -177,10 +183,12 @@ int main(int argc, char **argv) {
           "gripperFinger_deg");
   rclcpp::Client<raptor_interface::srv::SetServo>::SharedPtr client_set_arm =
       node->create_client<raptor_interface::srv::SetServo>("gripperArm_deg");
+  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr client_video =
+      node->create_client<std_srvs::srv::Trigger>("videoTrigger");
 
   /* READ OPTIMAL CONTROLS FROM PRECALCULATED FILE*/
   std::ifstream reader;
-  reader.open("apps/app_grasper/src/u_opt.csv");
+  reader.open("apps/app_grasper_sim/src/u_opt.csv");
   std::cout << "initialized reader" << std::endl;
   std::cout << "vector size: [" << u_opt.size() << ", " << u_opt.at(0).size()
             << ", " << u_opt.at(0).at(0).size() << ", "
@@ -209,9 +217,13 @@ int main(int argc, char **argv) {
         while (std::getline(lineStream, cell, ',')) {
           u.push_back(stod(cell));
         }
-        u_opt.at(z).at(vx).at(0).at(i) = u.at(0);
-        u_opt.at(z).at(vx).at(1).at(i) = u.at(1);
-        u_opt.at(z).at(vx).at(2).at(i) = u.at(2);
+        // std::cout << u.size() << std::endl;
+        u_opt.at(z).at(vx).at(0).at(i) = u.at(0); // u0_opt
+        u_opt.at(z).at(vx).at(1).at(i) = u.at(1); // u1_opt
+        u_opt.at(z).at(vx).at(2).at(i) = u.at(2); // u2_opt
+        u_opt.at(z).at(vx).at(3).at(i) = u.at(3); // x_opt
+        u_opt.at(z).at(vx).at(4).at(i) = u.at(4); // z_opt
+        u_opt.at(z).at(vx).at(5).at(i) = u.at(5); // vel_opt
       }
     }
   }
@@ -219,9 +231,10 @@ int main(int argc, char **argv) {
 
   /* INITIALIZE LOGGING */
   std::ofstream file;
-  std::string path = "apps/app_grasper/log/grasp1.csv";
+  std::string path = "apps/app_grasper_sim/log/grasp1.csv";
   file.open(path);
-  file << "u0_opt,u1_opt,u2_opt,x,z,vx,vz,pitch\n";
+  file << "u0_opt,u1_opt,u2_opt,x,z,vel,xr,zr,"
+          "vxr,vzr,pitchr\n";
 
   /* INITIALIZE MAVSDK */
   if (argc != 2) {
@@ -278,6 +291,14 @@ int main(int argc, char **argv) {
   auto gripperResponse = client_set_gripper->async_send_request(gripperRequest);
 
   // wait until we are sufficiently close to the object
+  while (get_coords(telemetry).x < -grasp_length * 5) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  // start video recording
+  auto videoRequest = std::make_shared<std_srvs::srv::Trigger::Request>();
+  auto videoResponse = client_video->async_send_request(videoRequest);
+  std::cout << "started video recording" << std::endl;
+
   while (get_coords(telemetry).x < -grasp_length) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
@@ -308,33 +329,66 @@ int main(int argc, char **argv) {
   double gripper_angle;
 
   boost::asio::io_service io;
+  int idx = 0;
+  for (int i = 0; idx < iterations; i++) {
+    boost::asio::deadline_timer t(io, boost::posix_time::milliseconds(5));
 
-  for (int i = 0; i < iterations; i++) {
-    boost::asio::deadline_timer t(
-        io, boost::posix_time::milliseconds(int(1000 * dt)));
-
+    // FIND CONTROLS (TODO: CHECK FOR out_of_range)
+    coordinates coords = get_coords(telemetry);
+    while (coords.x > u_opt.at(z_idx).at(vx_idx).at(3).at(idx)) {
+      idx++;
+    }
+    std::cout << "x: " << coords.x
+              << " x_vec:" << u_opt.at(z_idx).at(vx_idx).at(3).at(idx)
+              << " idx:" << idx << std::endl;
     // CONTROL INPUTS HERE
     Offboard::Attitude msg;
     // set optimal control values
-    msg.pitch_deg = u_opt.at(z_idx).at(vx_idx).at(1).at(i) * (180.0 / M_PI);
-    msg.thrust_value = u_opt.at(z_idx).at(vx_idx).at(0).at(i);
-    gripper_angle = u_opt.at(z_idx).at(vx_idx).at(2).at(i) * (180.0 / M_PI);
-    std::cout << "control: " << msg.pitch_deg << " , " << msg.thrust_value
-              << " , " << gripper_angle << std::endl;
+    double alt_error = coords.z - u_opt.at(z_idx).at(vx_idx).at(4).at(idx);
+    msg.pitch_deg = u_opt.at(z_idx).at(vx_idx).at(1).at(idx) * (180.0 / M_PI) -
+                    params::K_alt * alt_error;
 
+    double speed_error = coords.vx * coords.vx + coords.vz * coords.vz -
+                         u_opt.at(z_idx).at(vx_idx).at(5).at(idx) *
+                             u_opt.at(z_idx).at(vx_idx).at(5).at(idx);
+    msg.thrust_value =
+        u_opt.at(z_idx).at(vx_idx).at(0).at(idx) - params::K_spd * speed_error;
+
+    // msg.pitch_deg = u_opt.at(z_idx).at(vx_idx).at(1).at(idx) * (180.0 /
+    // M_PI); msg.thrust_value = u_opt.at(z_idx).at(vx_idx).at(0).at(idx);
+    gripper_angle = u_opt.at(z_idx).at(vx_idx).at(2).at(idx) * (180.0 / M_PI);
+    // std::cout << "control: " << msg.pitch_deg << " , " << msg.thrust_value
+    //           << " , " << gripper_angle << std::endl;
+
+    /* SET ATTITUDE */
     offboard.set_attitude(msg); // send offboard msg
 
-    /* TODO SEND GRIPPER ANGLE TO ARDUINO */
+    /* SEND GRIPPER ANGLE TO SIMULATOR */
     auto request = std::make_shared<raptor_interface::srv::SetServo::Request>();
-    request->angle = u_opt.at(z_idx).at(vx_idx).at(2).at(i) * (180.0 / M_PI);
+    request->angle = u_opt.at(z_idx).at(vx_idx).at(2).at(idx) * (180.0 / M_PI);
     auto response = client_set_arm->async_send_request(request);
 
+    // check if gripper should be closed
+    if (coords.x > 0) {
+      gripperRequest =
+          std::make_shared<raptor_interface::srv::SetServo::Request>();
+      gripperRequest->angle = 10.0;
+      gripperResponse = client_set_gripper->async_send_request(gripperRequest);
+    }
+
     // logging (u0,u1,u2,x,z,vx,vz)
-    coordinates coords = get_coords(telemetry);
-    file << u_opt.at(z_idx).at(vx_idx).at(0).at(i) << ","
-         << u_opt.at(z_idx).at(vx_idx).at(1).at(i) << "," << gripper_angle
-         << "," << coords.x << "," << coords.z << "," << coords.vx << ","
-         << coords.vz << ","
+    // file << u_opt.at(z_idx).at(vx_idx).at(0).at(idx) << ","
+    //      << u_opt.at(z_idx).at(vx_idx).at(1).at(idx) << "," << gripper_angle
+    //      << "," << coords.x << "," << coords.z << "," << coords.vx << ","
+    //      << coords.vz << ","
+    //      << telemetry.attitude_euler().pitch_deg * M_PI / 180 << "\n";
+    file << u_opt.at(z_idx).at(vx_idx).at(0).at(idx) << ","
+         << u_opt.at(z_idx).at(vx_idx).at(1).at(idx) << ","
+         << u_opt.at(z_idx).at(vx_idx).at(2).at(idx) << ","
+         << u_opt.at(z_idx).at(vx_idx).at(3).at(idx) << ","
+         << u_opt.at(z_idx).at(vx_idx).at(4).at(idx) << ","
+         << u_opt.at(z_idx).at(vx_idx).at(5).at(idx) << "," << coords.x << ","
+         << coords.z << "," << coords.vx << "," << coords.vz << ","
          << telemetry.attitude_euler().pitch_deg * M_PI / 180 << "\n";
 
     // after the grasp is over-> we leave the control loop and continue the
@@ -350,11 +404,21 @@ int main(int argc, char **argv) {
   std::cout << "Finished MPC -> continuing mission" << std::endl;
   offboard.stop();
   mission.start_mission();
-  std::cout << "continued mission -> MPC Program will now stop! "
+  std::this_thread::sleep_for(std::chrono::seconds(1));
+  std::cout << "setting gripper to landing position..." << std::endl;
+  armRequest = std::make_shared<raptor_interface::srv::SetServo::Request>();
+  armRequest->angle = 180.0;
+  armResponse = client_set_arm->async_send_request(armRequest);
+
+  std::cout << "continued mission -> Offboard controller will now stop! "
                "Good Luck Landing that aircraft :)"
             << std::endl;
 
-  // TODO: set angle to landing config
+  // stop video recording
+  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+  videoRequest = std::make_shared<std_srvs::srv::Trigger::Request>();
+  videoResponse = client_video->async_send_request(videoRequest);
+  std::cout << "stopped video recording" << std::endl;
   file.close();
   return 0;
 }
