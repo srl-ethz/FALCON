@@ -20,18 +20,31 @@ using std::this_thread::sleep_for;
 // }
 // MX Model::thrust(MX u_throttle) { return 14.456 * pow(u_throttle, 2); }
 
-/* SIM PARAMETERS */
+// /* SIM PARAMETERS */
+// MX Model::drag(MX aoA_rad, MX airspeed_squared) {
+//   return if_else(aoA_rad < 0,
+//                  0.5 * Model::A_tot * Model::rho * airspeed_squared *
+//                      0.04909224,
+//                  0.5 * Model::A_tot * Model::rho * airspeed_squared *
+//                      (12.10066432 * aoA_rad * aoA_rad + 0.02392831));
+// }
+// MX Model::lift(MX aoA_rad, MX airspeed_squared) {
+//   return if_else(aoA_rad < 0, 0,
+//                  0.5 * Model::A_tot * Model::rho * airspeed_squared *
+//                      (5.63145487 * aoA_rad + 0.0714831));
+// }
+// MX Model::thrust(MX u_throttle, MX airspeed) {
+//   return 104.72 * u_throttle * u_throttle * (1 - airspeed / 25);
+// }
+
+/* SIMPLIFIED MODEL */
 MX Model::drag(MX aoA_rad, MX airspeed_squared) {
-  return if_else(aoA_rad < 0,
-                 0.5 * Model::A_tot * Model::rho * airspeed_squared *
-                     0.04909224,
-                 0.5 * Model::A_tot * Model::rho * airspeed_squared *
-                     (12.10066432 * aoA_rad * aoA_rad + 0.02392831));
+  return 0.5 * Model::A_tot * Model::rho * airspeed_squared * Model::cd *
+         (aoA_rad + Model::a0);
 }
 MX Model::lift(MX aoA_rad, MX airspeed_squared) {
-  return if_else(aoA_rad < 0, 0,
-                 0.5 * Model::A_tot * Model::rho * airspeed_squared *
-                     (5.63145487 * aoA_rad + 0.0714831));
+  return 0.5 * Model::A_tot * Model::rho * airspeed_squared * Model::cl *
+         (aoA_rad + Model::a0);
 }
 MX Model::thrust(MX u_throttle, MX airspeed) {
   return 104.72 * u_throttle * u_throttle * (1 - airspeed / 25);

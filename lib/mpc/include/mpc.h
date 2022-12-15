@@ -40,10 +40,13 @@ void doControlStep(std::vector<std::vector<double>> &u_opt, casadi::DM &x0,
 
 namespace Model {
 // constants
-const double A_tot = 1;           // m2
+const double A_tot = 1.2;         // m2
 const double rho = 1.225;         // kg_m3
 const double mass = 1.5;          // kg
 const double arm_length = 0.3296; // m
+const double a0 = 0.05984281113;  // rad
+const double cd = 0.6417112299;   // from sysID
+const double cl = 4.752798721;    // from sysID
 // functions
 casadi::MX drag(casadi::MX aoA, casadi::MX speed_squared);
 casadi::MX lift(casadi::MX aoA, casadi::MX speed_squared);

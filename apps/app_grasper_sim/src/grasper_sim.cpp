@@ -33,9 +33,9 @@ using std::this_thread::sleep_for;
 #include "mavsdk_helper.h"
 
 namespace params {
-const double K_alt = 100.0;
-const double K_spd = 0.3;
-}; // namespace params
+const double K_alt = 40.0; // 40.0
+const double K_spd = 1.7;  // 1.7
+};                         // namespace params
 
 // TODO Put into YAML file (dont care for now)
 //   way point before pickup (mission dependent)
@@ -66,15 +66,15 @@ const double yaw_I = 0.2;
 
 // Variables that have to be exactly the same as in traj_gen.cpp:
 const double time_horizon = 1.0;
-const double dt = 0.02;
+const double dt = 0.01;
 const int iterations = int(time_horizon / dt);
 
 // other constants
 const double R = 6378137; // earths Radius in [m]
 const int n_initial_conditions = 6;
 const int n_ctrl_vars = 6; // u0, u1, u2, x, z, vel
-const int n_z = 10;        // number of possible initial conditions for x
-const int n_vx = 9;        // number of possible initial conditions for vs
+const int n_z = 20;        // number of possible initial conditions for x
+const int n_vx = 21;       // number of possible initial conditions for vs
 const std::vector<double> vx0 =
     std::vector<double>(n_vx); // values of possible initial conditions
 const std::vector<double> x0 =
@@ -85,10 +85,12 @@ std::vector<std::vector<std::vector<std::vector<double>>>>
                    n_vx, std::vector<std::vector<double>>(
                              n_ctrl_vars, std::vector<double>(iterations))));
 
-std::vector<double> possible_z{9.75,  9.80,  9.85,  9.90,  9.95,
-                               10.00, 10.05, 10.10, 10.15, 10.20};
-std::vector<double> possible_vx{8.5,  8.75, 9.0,   9.25, 9.5,
-                                9.75, 10.0, 10.25, 10.5};
+std::vector<double> possible_z{9.5,   9.55,  9.60,  9.65,  9.70,  9.75,  9.80,
+                               9.85,  9.90,  9.95,  10.00, 10.05, 10.10, 10.15,
+                               10.20, 10.25, 10.30, 10.35, 10.40, 10.45};
+std::vector<double> possible_vx{8.5, 8.6,  8.7,  8.8,  8.9,  9.0,  9.1,
+                                9.2, 9.3,  9.4,  9.5,  9.6,  9.7,  9.8,
+                                9.9, 10.0, 10.1, 10.2, 10.3, 10.4, 10.5};
 
 /// @brief struct for cooridnates in the pick-up plane
 /// @param x x coordinate
@@ -164,7 +166,9 @@ coordinates get_coords(Telemetry &telemetry) {
   double pos_lat = telemetry.position().latitude_deg - obj_lat;
   coordinates coords;
   coords.x = deg_to_m(pos_long * dir_long + pos_lat * dir_lat);
-  coords.z = telemetry.position().absolute_altitude_m - ground_alt;
+  coords.z = -telemetry.position_velocity_ned()
+                  .position.down_m; // telemetry.position().absolute_altitude_m
+                                    // - ground_alt;
   coords.vx = telemetry.velocity_ned().north_m_s * dir_lat +
               telemetry.velocity_ned().east_m_s * dir_long;
   coords.vz = -telemetry.velocity_ned().down_m_s;
@@ -277,7 +281,8 @@ int main(int argc, char **argv) {
       break;
     }
   }
-  std::cout << "takeoff complete, Now watiting for MPC action!" << std::endl;
+  std::cout << "takeoff complete, Now watiting for Offboard action!"
+            << std::endl;
 
   std::cout << "setting gripper to inital position" << std::endl;
   auto armRequest =
@@ -325,6 +330,8 @@ int main(int argc, char **argv) {
   std::cout << "Actual Coords: [" << coords.z << ", " << coords.vx << "]"
             << "\n x0 coords: [" << possible_z.at(z_idx) << ", "
             << possible_vx.at(vx_idx) << "]" << std::endl;
+  std::cout << "other initial conditions: "
+            << telemetry.attitude_euler().pitch_deg << std::endl;
 
   double gripper_angle;
 
@@ -341,18 +348,23 @@ int main(int argc, char **argv) {
     std::cout << "x: " << coords.x
               << " x_vec:" << u_opt.at(z_idx).at(vx_idx).at(3).at(idx)
               << " idx:" << idx << std::endl;
-    // CONTROL INPUTS HERE
+    // std::cout << "pitch: " << telemetry.attitude_euler().pitch_deg <<
+    // std::endl;
+    //  CONTROL INPUTS HERE
     Offboard::Attitude msg;
     // set optimal control values
     double alt_error = coords.z - u_opt.at(z_idx).at(vx_idx).at(4).at(idx);
-    msg.pitch_deg = u_opt.at(z_idx).at(vx_idx).at(1).at(idx) * (180.0 / M_PI) -
+    msg.pitch_deg = -u_opt.at(z_idx).at(vx_idx).at(1).at(idx) * (180.0 / M_PI) +
                     params::K_alt * alt_error;
+    std::cout << "alt_error: " << alt_error << " pitch cmd: " << msg.pitch_deg
+              << std::endl;
 
-    double speed_error = coords.vx * coords.vx + coords.vz * coords.vz -
-                         u_opt.at(z_idx).at(vx_idx).at(5).at(idx) *
-                             u_opt.at(z_idx).at(vx_idx).at(5).at(idx);
+    double speed_error = coords.vx - u_opt.at(z_idx).at(vx_idx).at(5).at(idx);
     msg.thrust_value =
         u_opt.at(z_idx).at(vx_idx).at(0).at(idx) - params::K_spd * speed_error;
+
+    std::cout << "spd_error: " << speed_error
+              << " thrust cmd: " << msg.thrust_value << std::endl;
 
     // msg.pitch_deg = u_opt.at(z_idx).at(vx_idx).at(1).at(idx) * (180.0 /
     // M_PI); msg.thrust_value = u_opt.at(z_idx).at(vx_idx).at(0).at(idx);

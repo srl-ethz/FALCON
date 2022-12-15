@@ -9,7 +9,7 @@ using namespace casadi;
 
 // constants
 const double time_horizon = 1.0;
-const double dt = 0.02;
+const double dt = 0.01;
 const int iterations = int(time_horizon / dt);
 const int n_initial_conditions = 6;
 const int n_reference_vars = 6; // number of reference variables
@@ -23,12 +23,12 @@ int main(int argc, char *argv[]) {
 
   // set initial state
   DM x0 = DM::zeros(n_initial_conditions, 1);
-  x0(0, 0) = -5;                   // x
-  x0(1, 0) = 10;                   // z
-  x0(2, 0) = 10;                   // vx
-  x0(3, 0) = 0;                    // vz
-  x0(4, 0) = 0.026212279457713025; // initial pitch
-  x0(5, 0) = 30;                   // beta
+  x0(0, 0) = -5;            // x
+  x0(1, 0) = 10;            // z
+  x0(2, 0) = 10;            // vx
+  x0(3, 0) = 0;             // vz
+  x0(4, 0) = 0.03674860553; // initial pitch
+  x0(5, 0) = 30;            // beta
 
   // set reference
   MX ref = MX(n_reference_vars, 1);
@@ -53,8 +53,8 @@ int main(int argc, char *argv[]) {
   ctrl_log.open(path_ctrl_log);
   ctrl_log << "u0_opt,u1_opt,u2_opt,x,z,vel\n";
 
-  for (double z = 9.75; z < 10.25; z += 0.05) {
-    for (double vx = 8.5; vx < 10.6; vx += 0.25) {
+  for (double z = 9.5; z < 10.5; z += 0.05) {
+    for (double vx = 8.5; vx < 10.51; vx += 0.10) {
       // double z = 10.2;
       // double vx = 10;
       std::cout << "NEW OPITIMZATION STARTED [z,vx]: [" << z << ", " << vx

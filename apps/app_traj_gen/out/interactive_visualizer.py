@@ -61,7 +61,7 @@ speed_slider = Slider(
     ax=aspeed,
     label='Velocity',
     valmin=8.5,
-    valstep=0.25,
+    valstep=0.1,
     valmax=10.5,
     valinit=init_speed,
 )
@@ -70,9 +70,9 @@ axheight = fig.add_axes([0.1, 0.25, 0.0225, 0.63])
 height_slider = Slider(
     ax=axheight,
     label="Height",
-    valmin=0.75,
+    valmin=0.5,
     valstep=0.05,
-    valmax=1.2,
+    valmax=1.45,
     valinit=init_height,
     orientation="vertical"
 )
@@ -87,7 +87,7 @@ def update(val):
 
     ax.plot(data['x'][idx],data['z'][idx],marker='x')
     ax.scatter(data['gripx'][idx],data['gripz'][idx],marker='o',color='black')
-    ax.scatter(0,obj_height,marker='x',s=10)
+    ax.scatter(0,obj_height,marker='x',s=50,color='red')
     for i in idx:
         ax.arrow(data['x'][i],data['z'][i],data['gripx'][i]-data['x'][i],data['gripz'][i]-data['z'][i],color='black')
         # ax.arrow(   data['x'][i] - length*np.cos(data['u1_opt'])[i],
