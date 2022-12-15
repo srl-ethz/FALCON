@@ -11,7 +11,7 @@ set(ROS2_BUILD ON)
 set(OPENCV_BUILD OFF)
 
 #turn this on if you are using casadi (traj gen)
-set(CASADI_BUILD ON)
+set(CASADI_BUILD OFF)
 
 #turn this on if you are using vicon (gripper_mocap_test)
 set(VICON_BUILD OFF)

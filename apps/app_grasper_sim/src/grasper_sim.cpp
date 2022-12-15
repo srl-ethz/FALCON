@@ -284,11 +284,16 @@ int main(int argc, char **argv) {
   std::cout << "takeoff complete, Now watiting for Offboard action!"
             << std::endl;
 
+  
   std::cout << "setting gripper to inital position" << std::endl;
-  auto armRequest =
+  for(double i=180; i>u_opt.at(0).at(0).at(2).at(0) * (180.0 / M_PI);i--){
+      auto armRequest =
       std::make_shared<raptor_interface::srv::SetServo::Request>();
-  armRequest->angle = u_opt.at(0).at(0).at(2).at(0) * 180.0 / M_PI;
-  auto armResponse = client_set_arm->async_send_request(armRequest);
+    armRequest->angle = i;
+    auto armResponse = client_set_arm->async_send_request(armRequest);
+    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+  }
+
 
   auto gripperRequest =
       std::make_shared<raptor_interface::srv::SetServo::Request>();
@@ -300,9 +305,9 @@ int main(int argc, char **argv) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   // start video recording
-  auto videoRequest = std::make_shared<std_srvs::srv::Trigger::Request>();
-  auto videoResponse = client_video->async_send_request(videoRequest);
-  std::cout << "started video recording" << std::endl;
+  // auto videoRequest = std::make_shared<std_srvs::srv::Trigger::Request>();
+  // auto videoResponse = client_video->async_send_request(videoRequest);
+  // std::cout << "started video recording" << std::endl;
 
   while (get_coords(telemetry).x < -grasp_length) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -354,8 +359,8 @@ int main(int argc, char **argv) {
     Offboard::Attitude msg;
     // set optimal control values
     double alt_error = coords.z - u_opt.at(z_idx).at(vx_idx).at(4).at(idx);
-    msg.pitch_deg = -u_opt.at(z_idx).at(vx_idx).at(1).at(idx) * (180.0 / M_PI) +
-                    params::K_alt * alt_error;
+    msg.pitch_deg = -(-u_opt.at(z_idx).at(vx_idx).at(1).at(idx) * (180.0 / M_PI) +
+                    params::K_alt * alt_error);
     std::cout << "alt_error: " << alt_error << " pitch cmd: " << msg.pitch_deg
               << std::endl;
 
@@ -418,9 +423,13 @@ int main(int argc, char **argv) {
   mission.start_mission();
   std::this_thread::sleep_for(std::chrono::seconds(1));
   std::cout << "setting gripper to landing position..." << std::endl;
-  armRequest = std::make_shared<raptor_interface::srv::SetServo::Request>();
-  armRequest->angle = 180.0;
-  armResponse = client_set_arm->async_send_request(armRequest);
+  for(double i=140; i<180;i++){
+      auto armRequest =
+      std::make_shared<raptor_interface::srv::SetServo::Request>();
+    armRequest->angle = i;
+    auto armResponse = client_set_arm->async_send_request(armRequest);
+    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+  }
 
   std::cout << "continued mission -> Offboard controller will now stop! "
                "Good Luck Landing that aircraft :)"
@@ -428,8 +437,8 @@ int main(int argc, char **argv) {
 
   // stop video recording
   std::this_thread::sleep_for(std::chrono::milliseconds(1500));
-  videoRequest = std::make_shared<std_srvs::srv::Trigger::Request>();
-  videoResponse = client_video->async_send_request(videoRequest);
+  // videoRequest = std::make_shared<std_srvs::srv::Trigger::Request>();
+  // videoResponse = client_video->async_send_request(videoRequest);
   std::cout << "stopped video recording" << std::endl;
   file.close();
   return 0;
